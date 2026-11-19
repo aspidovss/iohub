@@ -45,7 +45,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          Copy-Item desktop/target/release/iohub-desktop.exe artifacts/
           Copy-Item desktop/target/release/bundle/nsis/*.exe artifacts/
           # версия берётся из Cargo.toml, чтобы имя совпадало и по тегу, и при ручном запуске
           $line = Select-String -Path desktop/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
