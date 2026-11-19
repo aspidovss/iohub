@@ -57,6 +57,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Индикатор скачивания у Invoke-WebRequest в PowerShell 5.1 отъедает половину времени:
+# на сотнях мелких файлов без него быстрее в разы.
+$ProgressPreference = 'SilentlyContinue'
 
 if (-not $Root) { $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
 if (-not $SavedHtml) { $SavedHtml = Join-Path $Root 'IO Hub.html' }
@@ -141,10 +144,11 @@ function Get-Asset([string]$rel) {
   if (Test-Path -LiteralPath $dest) { return $true }
   New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
   try {
-    Invoke-WebRequest -Uri "$Base/$rel" -OutFile $dest -UseBasicParsing -ErrorAction Stop
+    Invoke-WebRequest -Uri "$Base/$rel" -OutFile $dest -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
     return $true
   } catch {
     if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
+    if ($_ + '' -match 'timed out') { $script:timeouts++ }
     return $false
   }
 }
@@ -161,10 +165,12 @@ foreach ($e in @('assets/driver-ObUgXM8z.js', 'assets/emitter-WqgolIYy.js',
 
 $ok = 0
 $fail = @()
+$script:timeouts = 0
 while ($queue.Count -gt 0) {
   $r = $queue.Dequeue()
   if (Get-Asset $r) {
     $ok++
+    if ($ok % 40 -eq 0) { Write-Host "  скачано $ok, в очереди ещё $($queue.Count)…" }
     if ($r -match '\.(js|css)$') {
       Add-Refs (Get-Content -LiteralPath (Join-Path $OutDir ($r -replace '/', '\')) -Raw -Encoding UTF8)
     }
@@ -175,6 +181,11 @@ while ($queue.Count -gt 0) {
 
 Write-Host ""
 Write-Host "Скачано или уже было: $ok ; всего уникальных ссылок: $($seen.Count)"
+if ($script:timeouts) {
+  Write-Host "ВАЖНО: $script:timeouts обращений не дождались ответа за 30 секунд — похоже, сети нет или"
+  Write-Host "она закрыта (корпоративный прокси, файрвол). Это не «файла нет на сервере»: запустите"
+  Write-Host "скрипт ещё раз, когда сеть появится, — уже скачанное он пропустит."
+}
 Write-Host "Не найдено на сервере: $($fail.Count) — часть путей приложение собирает на лету"
 Write-Host "(картинки .art.js, схемы .svg, описания .kle.json их нет в открытом доступе, это нормально)."
 $serious = @($fail | Where-Object { $_ -match '\.(js|css|woff2)$' -and $_ -notmatch '\.art\.js$' })
@@ -185,5 +196,7 @@ if ($serious.Count) {
   Write-Host "Среди нескачанного нет ни модулей, ни стилей, ни шрифтов."
 }
 Write-Host ""
+Write-Host "Старые файлы скрипт не удаляет: в $OutDir могут остаться модули от прошлой"
+Write-Host "сборки производителя. Для чистого дампа очистите папку вывода и запустите заново."
 Write-Host "Дальше: python desktop/prepare_webview.py, затем сборка. Если имя главного файла"
 Write-Host "изменилось, поправьте якорь правок в desktop/prepare_webview.py."
