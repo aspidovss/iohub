@@ -111,7 +111,14 @@ Write-Host "Главный модуль: $jsName ; стили: $cssName"
 
 # Шапка сохранённой страницы: путь к файлам сохранения меняем на локальный /assets/,
 # ссылки на чужой домен выбрасываем — программа работает без интернета.
-$head = $head -replace ('(?:\./)?' + [regex]::Escape($savedLeaf) + '[\\/]'), '/assets/'
+# Браузер пишет имя папки то с пробелом, то как %20, и при повторном сохранении добавляет
+# «(2)», поэтому дальше проверяем, что подмена действительно сработала.
+$savedPattern = '(?:\./)?' + ([regex]::Escape($savedLeaf) -replace '\\ ', '(?:%20| )') + '[\\/]'
+$head = $head -replace $savedPattern, '/assets/'
+if ($head -match $savedPattern) {
+  throw "Не переписал пути к «$savedLeaf»: в шапке остались ссылки внутрь папки сохранения. " +
+        'Передайте скрипту ровно ту папку, которую создал браузер (-SavedDir), и перезапустите.'
+}
 $head = [regex]::Replace($head, '<link[^>]*href="https?://[^"]*"[^>]*>\s*', '')
 $head = [regex]::Replace($head, '<script[^>]*src="https?://[^"]*"[^>]*>\s*</script>', '')
 # Сохранённая страница ссылается на главный модуль как на файл .download — такой ссылки в
@@ -126,6 +133,8 @@ $html = $head + "<body>`n" +
 
 $queue = New-Object System.Collections.Generic.Queue[string]
 $seen = New-Object System.Collections.Generic.HashSet[string]
+# Куда пишем, в абсолютном виде: по этой границе проверяем каждый путь из чужого JS.
+$OutFull = [System.IO.Path]::GetFullPath($OutDir) + [System.IO.Path]::DirectorySeparatorChar
 
 function Add-Refs([string]$t) {
   $found = @()
@@ -136,20 +145,31 @@ function Add-Refs([string]$t) {
   $found += [regex]::Matches($t, '(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]+-[A-Za-z0-9_\-]{6,10}\.js)') |
     ForEach-Object { 'assets/' + $_.Groups[1].Value }
   $found += [regex]::Matches($t, '([A-Za-z0-9_\-]+\.woff2)') | ForEach-Object { 'assets/' + $_.Groups[1].Value }
-  foreach ($f in $found) { if ($seen.Add($f)) { $queue.Enqueue($f) } }
+  foreach ($f in $found) {
+    # .. внутри пути позволил бы записать файл за пределы папки вывода.
+    if ($f -match '\.\.') { continue }
+    if ($seen.Add($f)) { $queue.Enqueue($f) }
+  }
 }
 
+# Ответ: ok | notfound | timeout | net | outside. Разные исходы держим раздельно: «файла нет
+# на сервере» здесь норма, а «сети нет» — поломка, о которой надо сказать громко.
 function Get-Asset([string]$rel) {
   $dest = Join-Path $OutDir ($rel -replace '/', '\')
-  if (Test-Path -LiteralPath $dest) { return $true }
+  if (-not [System.IO.Path]::GetFullPath($dest).StartsWith($OutFull)) { return 'outside' }
+  if (Test-Path -LiteralPath $dest) { return 'ok' }
   New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
   try {
     Invoke-WebRequest -Uri "$Base/$rel" -OutFile $dest -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
-    return $true
+    return 'ok'
   } catch {
     if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
-    if ($_ + '' -match 'timed out') { $script:timeouts++ }
-    return $false
+    # $_ это ErrorRecord: сложить его со строкой нельзя, берём текст исключения.
+    if ($_.Exception.Message -match 'timed out') { return 'timeout' }
+    $code = 0
+    if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+    if ($code -ge 400 -and $code -lt 500) { return 'notfound' }
+    return 'net'
   }
 }
 
@@ -164,31 +184,45 @@ foreach ($e in @('assets/driver-ObUgXM8z.js', 'assets/emitter-WqgolIYy.js',
 }
 
 $ok = 0
-$fail = @()
-$script:timeouts = 0
+$notFound = @()
+$netFail = @()
+$timeouts = 0
+$misses = 0
 while ($queue.Count -gt 0) {
   $r = $queue.Dequeue()
-  if (Get-Asset $r) {
+  $st = Get-Asset $r
+  if ($st -eq 'ok') {
     $ok++
+    $misses = 0
     if ($ok % 40 -eq 0) { Write-Host "  скачано $ok, в очереди ещё $($queue.Count)…" }
     if ($r -match '\.(js|css)$') {
       Add-Refs (Get-Content -LiteralPath (Join-Path $OutDir ($r -replace '/', '\')) -Raw -Encoding UTF8)
     }
+  } elseif ($st -eq 'timeout' -or $st -eq 'net') {
+    if ($st -eq 'timeout') { $timeouts++ }
+    $netFail += $r
+    $misses++
+    if ($misses -ge 5) {
+      throw "Подряд $misses файлов не скачались (таймауты или сетевые ошибки) — похоже, интернета нет " +
+            'или он закрыт прокси. Проверьте сеть и запустите скрипт снова: уже скачанное он пропустит.'
+    }
   } else {
-    $fail += $r
+    # notfound и outside: качать нечего, но это не поломка сети.
+    $misses = 0
+    $notFound += $r
   }
 }
 
 Write-Host ""
 Write-Host "Скачано или уже было: $ok ; всего уникальных ссылок: $($seen.Count)"
-if ($script:timeouts) {
-  Write-Host "ВАЖНО: $script:timeouts обращений не дождались ответа за 30 секунд — похоже, сети нет или"
+if ($timeouts) {
+  Write-Host "ВАЖНО: $timeouts обращений не дождались ответа за 30 секунд — похоже, сети нет или"
   Write-Host "она закрыта (корпоративный прокси, файрвол). Это не «файла нет на сервере»: запустите"
   Write-Host "скрипт ещё раз, когда сеть появится, — уже скачанное он пропустит."
 }
-Write-Host "Не найдено на сервере: $($fail.Count) — часть путей приложение собирает на лету"
+Write-Host "Не найдено на сервере (404): $($notFound.Count) — часть путей приложение собирает на лету"
 Write-Host "(картинки .art.js, схемы .svg, описания .kle.json их нет в открытом доступе, это нормально)."
-$serious = @($fail | Where-Object { $_ -match '\.(js|css|woff2)$' -and $_ -notmatch '\.art\.js$' })
+$serious = @($notFound | Where-Object { $_ -match '\.(js|css|woff2)$' -and $_ -notmatch '\.art\.js$' })
 if ($serious.Count) {
   Write-Host "Стоит проверить вручную:"
   $serious | ForEach-Object { Write-Host "  $_" }
@@ -200,3 +234,9 @@ Write-Host "Старые файлы скрипт не удаляет: в $OutDir
 Write-Host "сборки производителя. Для чистого дампа очистите папку вывода и запустите заново."
 Write-Host "Дальше: python desktop/prepare_webview.py, затем сборка. Если имя главного файла"
 Write-Host "изменилось, поправьте якорь правок в desktop/prepare_webview.py."
+if ($netFail.Count) {
+  Write-Host ""
+  Write-Host "НЕ СКАЧАЛОСЬ ПО СЕТИ: $($netFail.Count) — дамп неполный, в сборку так ехать нельзя:"
+  $netFail | ForEach-Object { Write-Host "  $_" }
+  exit 1
+}
