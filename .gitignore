@@ -13,8 +13,12 @@
 /IO Hub.html
 /IO Hub_files/
 /probe/
+/.fetch/
 /shot-*.png
 *.tmp
+
+# питон: кэш сборки интерфейса
+__pycache__/
 
 # операционные системы и редакторы
 Thumbs.db
