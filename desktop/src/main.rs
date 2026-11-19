@@ -302,6 +302,8 @@ struct SupportInfo {
     repo: &'static str,
     issues: String,
     log_path: String,
+    version: &'static str,
+    data_path: String,
 }
 
 fn data_dir(app: &AppHandle) -> PathBuf {
@@ -310,11 +312,15 @@ fn data_dir(app: &AppHandle) -> PathBuf {
 
 #[tauri::command]
 fn support_info(app: AppHandle) -> SupportInfo {
+    let dir = data_dir(&app);
     SupportInfo {
         email: SUPPORT_EMAIL,
         repo: PROJECT_URL,
         issues: format!("{PROJECT_URL}/issues/new?labels=bug"),
-        log_path: data_dir(&app).join("iohub-desktop.log").display().to_string(),
+        log_path: dir.join("iohub-desktop.log").display().to_string(),
+        // Номер программы и папка данных — то, что человек ищет в первой же справке.
+        version: env!("CARGO_PKG_VERSION"),
+        data_path: dir.display().to_string(),
     }
 }
 

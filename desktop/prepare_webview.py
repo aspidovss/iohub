@@ -92,6 +92,19 @@ def main() -> None:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, target)
 
+    # Редактор однажды приписал шиму BOM. Браузеру он безразличен, а вот проверке файла
+    # и диффам мешает — убираем, если он снова появится.
+    shim = DST / "webhid-shim.js"
+    if shim.exists() and shim.read_bytes().startswith(b"\xef\xbb\xbf"):
+        shim.write_bytes(shim.read_bytes()[3:])
+
+    # Краткая справка: лежит в docs/ и становится страницей help.html, которую шим
+    # подсовывает окну «Справка». Отдельным файлом — чтобы текст можно было править,
+    # не трогая код шима, и читать в репозитории глазами.
+    help_src = ROOT / "docs" / "app-help.html"
+    if help_src.is_file():
+        shutil.copy2(help_src, DST / "help.html")
+
     html = (SRC / "index.html").read_text(encoding="utf-8")
     html = BROKEN.sub("", html)
     if SHIM not in html:
@@ -107,8 +120,9 @@ def main() -> None:
     patched = patch_brand_links(DST / "assets")
     count = len([p for p in (DST / "assets").rglob("*") if p.is_file()])
     sign = "iohub-desktop" if titled else "как в дампе"
+    help = "help.html" if (DST / "help.html").is_file() else "НЕТ"
     print(f"webview собран: index.html (шим внедрён), assets: {count}, "
-          f"ссылки бренда: {patched}, вывеска окна: {sign}, зонд: probe.html")
+          f"ссылки бренда: {patched}, вывеска окна: {sign}, зонд: probe.html, справка: {help}")
 
 
 if __name__ == "__main__":

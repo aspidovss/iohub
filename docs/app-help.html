@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Краткая справка iohub-desktop</title>
+</head>
+<body>
+<!--
+  Краткая справка, которую программа показывает у себя в окне («Справка» в шапке).
+  prepare_webview.py копирует этот файл в webview/help.html, шим подставляет нужный
+  раздел по языку интерфейса. Текста здесь немного: это память под рукой, а не руководство —
+  подробное описание остаётся в README.md репозитория.
+-->
+
+<section data-lang="ru">
+  <h4>Что это</h4>
+  <p>iohub-desktop — программа для настройки клавиатур IO без интернета. Внутри работает
+  штатный интерфейс web.io.vision, а доступ к клавиатуре даёт встроенный мост HID.
+  Программа неофициальная: интерфейс и прошивки принадлежат производителю.</p>
+
+  <h4>Первый запуск</h4>
+  <p>Нажмите <b>Устройства</b> → <b>Подключить устройство</b> и разрешите клавиатуру в появившемся
+  списке. Разрешение запоминается в файле <code>hid-allow.json</code>, в следующий раз спрашивать
+  не будет. Для новой модели достаточно разрешить её один раз — ключ устройства это
+  <code>VID:PID</code>, например <code>05ac:024f</code>.</p>
+
+  <h4>Экраны</h4>
+  <p>Список моделей открывается по кнопке <b>Устройства</b>. Когда клавиатура подключена,
+  появляется кнопка <b>Открыть</b>, а в ней вкладки: <b>Ключи</b>, <b>Доп. клавиши</b>,
+  <b>Производительность</b>, <b>Подсветка</b>, <b>Макросы</b>, <b>Профили</b>,
+  <b>Обслуживание</b>. Верхняя строка с этими вкладками прокручивается вместе со схемой.</p>
+
+  <h4>Назначить клавишу</h4>
+  <p>Кликните клавишу на схеме, выберите значение в панели справа и переключите слой
+  <b>Base</b> / <b>Fn</b>, если назначение нужно для второго слоя. Кнопка <b>Тест</b> показывает,
+  какие нажатия действительно уходит с клавиатуры.</p>
+
+  <h4>Запись в клавиатуру и прошивки</h4>
+  <p>Программа пишет в память клавиатуры только то, что вы нажали сами: ни пресеты, ни фоновые
+  процессы ничего не сохраняют. Прошивку она не меняет и не ищет сама. Список прошивок берётся
+  из файла <code>firmware.url</code> в папке данных — одна строка с адресом, который вы укажете.
+  Если файла нет, раздел прошивок остаётся пустым.</p>
+
+  <h4>Работа без интернета</h4>
+  <p>Интерфейс, картинки клавиатур и шрифты лежат внутри программы — во время работы она наружу
+  не ходит. Кнопки <b>GitHub</b> и почта открываются отдельной системной командой, только когда вы
+  сами нажимаете.</p>
+
+  <h4>Клавиатура не появляется в списке</h4>
+  <ul>
+    <li>Закройте конфигуратор производителя и другие программы, которые держат устройство.</li>
+    <li>Попробуйте другой USB-порт и отключите переходник-хаб.</li>
+    <li>В Linux нужны права на <code>/dev/hidraw*</code> — правило udev описано в README.</li>
+    <li>Новую модель можно добавить вручную: строка <code>VID:PID</code> в <code>hid-allow.json</code>.</li>
+  </ul>
+
+  <h4>Если что-то не работает</h4>
+  <p>Нажмите <b>Сообщить об ошибке</b> в шапке: соберётся отчёт с версией, списком устройств и
+  последними строками журнала. Его можно сохранить в файл, отправить письмом на почту поддержки
+  или создать задачу на GitHub. В отчёте нет ни имени пользователя, ни пути к его папке.</p>
+
+  <h4>Где файлы</h4>
+  <p>Windows — <code>%APPDATA%\vision.io.hub.desktop</code>, Linux —
+  <code>~/.local/share/vision.io.hub.desktop</code>. Там настройки доступа
+  <code>hid-allow.json</code>, адрес прошивок <code>firmware.url</code>, журнал
+  <code>iohub-desktop.log</code> и сохранённые отчёты в подпапке <code>reports</code>.</p>
+
+  <h4>Про Linux</h4>
+  <p>Сборка для Linux есть, но на реальном железе проверена меньше: там могут понадобиться права
+  на hidraw и разбор служебного интерфейса. Это отмечено и на странице скачивания.</p>
+</section>
+
+<section data-lang="en">
+  <h4>What this is</h4>
+  <p>iohub-desktop configures IO keyboards without internet. It runs the regular web.io.vision
+  interface and talks to the keyboard through a built-in HID bridge. The program is unofficial:
+  the interface and the firmware belong to the manufacturer.</p>
+
+  <h4>First run</h4>
+  <p>Press <b>Devices</b> → <b>Connect device</b> and allow your keyboard in the list. The decision
+  is remembered in <code>hid-allow.json</code>, so it will not ask again. A new model just needs to
+  be allowed once — the key is <code>VID:PID</code>, for example <code>05ac:024f</code>.</p>
+
+  <h4>Screens</h4>
+  <p><b>Devices</b> opens the model list. When a keyboard is connected the <b>Open</b> button
+  appears with tabs: <b>Keys</b>, <b>Advanced keys</b>, <b>Performance</b>, <b>Lighting</b>,
+  <b>Macros</b>, <b>Profiles</b>, <b>Maintenance</b>.</p>
+
+  <h4>Reassign a key</h4>
+  <p>Click a key on the scheme, pick the value in the side panel and switch the
+  <b>Base</b> / <b>Fn</b> layer if the mapping belongs to the second layer. <b>Test keys</b> shows
+  what the keyboard actually sends.</p>
+
+  <h4>Writing to the keyboard and firmware</h4>
+  <p>The program writes to the keyboard only when you press the control yourself — no presets and
+  no background process save anything. It never changes firmware on its own. The firmware list comes
+  from the <code>firmware.url</code> file in the data folder: one line with the address you choose.
+  Without that file the firmware section stays empty.</p>
+
+  <h4>Offline</h4>
+  <p>The interface, keyboard pictures and fonts are inside the program, so nothing goes out while
+  you work. <b>GitHub</b> and the support email open with a separate system command, and only when
+  you click them.</p>
+
+  <h4>Keyboard not in the list</h4>
+  <ul>
+    <li>Close the manufacturer's configurator and any other program holding the device.</li>
+    <li>Try another USB port and drop the hub.</li>
+    <li>On Linux you need access to <code>/dev/hidraw*</code> — the udev rule is in the README.</li>
+    <li>A new model can be added by hand: a <code>VID:PID</code> line in <code>hid-allow.json</code>.</li>
+  </ul>
+
+  <h4>When something breaks</h4>
+  <p>Press <b>Report a problem</b> in the header: the program builds a report with the version,
+  the device list and the last log lines. Save it to a file, send it to the support email or open a
+  GitHub issue. The report contains neither your user name nor your home folder.</p>
+
+  <h4>Where the files are</h4>
+  <p>Windows — <code>%APPDATA%\vision.io.hub.desktop</code>, Linux —
+  <code>~/.local/share/vision.io.hub.desktop</code>: <code>hid-allow.json</code>,
+  <code>firmware.url</code>, <code>iohub-desktop.log</code> and saved reports under
+  <code>reports</code>.</p>
+
+  <h4>About Linux</h4>
+  <p>Linux packages are published, but tested on real hardware less thoroughly: hidraw permissions
+  may be needed. The download page says so as well.</p>
+</section>
+</body>
+</html>

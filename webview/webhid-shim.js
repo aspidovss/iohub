@@ -478,6 +478,44 @@
       log('список элементов не удался: ' + e);
     }
   }
+  // Где в окне есть свободное место: углы, служебные контейнеры и верхний уровень #app.
+  // Нужено только при разборе интерфейса — экран виден только пользователю.
+  function describe(node) {
+    var cls = (typeof node.className === 'string' ? node.className : '').trim().split(/\s+/).slice(0, 2).join('.');
+    var r = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+    return node.tagName.toLowerCase() + (cls ? '.' + cls : '')
+      + (r ? '[' + Math.round(r.width) + 'x' + Math.round(r.height) + '@' + Math.round(r.x) + ',' + Math.round(r.y) + ']' : '');
+  }
+  function probeLayout(tag) {
+    try {
+      var w = window.innerWidth, h = window.innerHeight;
+      log(tag + ' окно: ' + w + 'x' + h + ' ; детей у body: ' + document.body.children.length);
+      var pts = [[16, 16], [w - 16, 16], [16, h - 16], [w - 16, h - 16], [16, Math.round(h / 2)]];
+      pts.forEach(function (p) {
+        var chain = [];
+        for (var n = document.elementFromPoint(p[0], p[1]); n && n !== document.documentElement && chain.length < 4; n = n.parentElement) {
+          chain.push(describe(n));
+        }
+        log(tag + ' точка ' + p[0] + ',' + p[1] + ': ' + (chain.join(' < ') || 'пусто'));
+      });
+      ['header', 'footer', 'nav', 'aside', 'main'].forEach(function (sel) {
+        var n = document.querySelector(sel);
+        log(tag + ' контейнер ' + sel + ': ' + (n ? describe(n) + ' «' + (n.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 50) + '»' : 'нет'));
+      });
+      var app = document.querySelector('#app');
+      Array.prototype.slice.call((app && app.children) || []).forEach(function (c, i) {
+        log(tag + ' app[' + i + ']: ' + describe(c));
+      });
+      var bar = document.querySelector('header');
+      Array.prototype.slice.call((bar && bar.children) || []).forEach(function (c, i) {
+        log(tag + ' header[' + i + ']: ' + describe(c) + ' «' + (c.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 26) + '»');
+      });
+      log(tag + ' прокрутка: окно ' + window.scrollY + ' ; body ' + document.body.scrollTop
+        + ' ; высота документа ' + document.documentElement.scrollHeight);
+    } catch (e) {
+      log(tag + ' разбор не удался: ' + e);
+    }
+  }
   // Сценарий проверки: файл autotask.txt в папке данных, по одному шагу в строке.
   // Шаги: wait:мс, click:текст, click!:текст (можно и по кнопке прошивки), dump:подпись.
   function runSteps(steps, i) {
@@ -530,6 +568,15 @@
       dumpControls('раскоп@' + (arg || i) + ' маршруты:');
       uiRoutes('раскоп@' + (arg || i));
       uiSnapshot('раскоп@' + (arg || i));
+    } else if (cmd === 'layout') {
+      probeLayout('разбор@' + (arg || i));
+    } else if (cmd === 'scroll') {
+      // Прокрутка страницы: по положению шапки видно, приклеена ли она к верху.
+      var to = arg === 'top' ? 0 : (arg === 'bottom' ? document.documentElement.scrollHeight : (parseInt(arg, 10) || 0));
+      window.scrollTo(0, to);
+      var sc = document.scrollingElement || document.documentElement;
+      sc.scrollTop = to;
+      log('прокрутка задана ' + to + ' ; стало ' + window.scrollY + '/' + sc.scrollTop);
     } else {
       log('неизвестный шаг: ' + line);
     }
@@ -591,15 +638,17 @@
   // письмо на почту поддержки или задача на GitHub. Никуда сама программа ничего не
   // отправляет: только сохраняет файл или открывает письмо/браузер по команде пользователя.
 
-  var support = { email: '', repo: '', issues: '', logPath: '' };
-  invoke('support_info')
+  var support = { email: '', repo: '', issues: '', logPath: '', version: '', dataPath: '' };
+  var supportReady = invoke('support_info')
     .then(function (info) {
-      if (!info) return;
+      if (!info) return support;
       support = info;
       window.__iohubSupportEmail = info.email || '';
       if (info.email) log('почта поддержки: ' + info.email);
+      return support;
     })
-    .catch(function () {});
+    // Ошибка не должна мешать: справка и кнопки GitHub работают и без этих строк.
+    .catch(function () { return support; });
 
   function reportFileName() {
     var d = new Date();
@@ -827,6 +876,279 @@
     info: function () { return support; },
   };
 
+  // ---------------------------------------------------------------- справка и GitHub
+  //
+  // Программа живёт без интернета, поэтому короткая памятка лежит внутри неё: страница
+  // help.html собирается из docs/app-help.html и показывается в окне по кнопке «Справка».
+  // Там же и ссылка на репозиторий — единственное место, откуда у программы растут ноги.
+  // Кнопки ставим в шапку интерфейса: она одна на всех экранах, и рядом штатная
+  // «Сообщить об ошибке». Svelte перерисовывает шапку сам, поэтому кнопки периодически
+  // проверяются на месте: выбило — ставим заново.
+
+  var HELP_TEXTS = {
+    ru: {
+      help: 'Справка', github: 'GitHub', title: 'Краткая справка',
+      close: 'Закрыть', report: 'Сообщить об ошибке', mail: 'Почта поддержки',
+      loading: 'Загружаем справку…',
+      missing: 'Текст справки не нашёлся внутри программы — проверьте файл help.html в сборке.',
+      footer: 'Программа неофициальная: интерфейс и прошивки принадлежат их автору.',
+    },
+    en: {
+      help: 'Help', github: 'GitHub', title: 'Quick help',
+      close: 'Close', report: 'Report a problem', mail: 'Email support',
+      loading: 'Loading help…',
+      missing: 'The help text is missing from the program — check help.html in the build.',
+      footer: 'Unofficial program: the interface and the firmware belong to their author.',
+    },
+  };
+
+  var helpPanel = null;
+  var helpHtml = null;
+  var helpEntry = { help: null, git: null, lang: '', announced: false };
+
+  function helpText(lang) { return HELP_TEXTS[lang] || HELP_TEXTS.en; }
+
+  // Язык интерфейса держит переключатель со значениями ru/en; <html lang> подстраивается следом.
+  function uiLang() {
+    var selects = document.querySelectorAll('header select');
+    for (var i = 0; i < selects.length; i++) {
+      var values = [];
+      for (var j = 0; j < selects[i].options.length; j++) values.push(selects[i].options[j].value);
+      if (values.indexOf('ru') !== -1 && values.indexOf('en') !== -1) {
+        return String(selects[i].value || '').toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+      }
+    }
+    var tag = String(document.documentElement.lang || '').toLowerCase();
+    if (tag.indexOf('ru') === 0) return 'ru';
+    if (tag.indexOf('en') === 0) return 'en';
+    return /^ru/i.test(navigator.language || '') ? 'ru' : 'en';
+  }
+
+  // Кнопка один в один как соседние кнопки шапки: берём их класс у соседа, чтобы
+  // вид следовал за темой интерфейса, а не за нашей догадкой о цветах.
+  function toolButton(host, label, role) {
+    var model = host.querySelector('button:not([data-iohub])');
+    var b = document.createElement('button');
+    b.setAttribute('data-iohub', role);
+    if (model) {
+      b.className = model.className;
+      b.setAttribute('style', 'cursor:pointer;');
+    } else {
+      b.setAttribute('style', BTN);
+    }
+    b.textContent = label;
+    return b;
+  }
+
+  function headerHost() {
+    return document.querySelector('header .extra')
+      || document.querySelector('header .brand')
+      || document.querySelector('header');
+  }
+
+  function ensureHelpEntry() {
+    var lang = uiLang();
+    var texts = helpText(lang);
+    var host = headerHost();
+    if (!host) return;
+    var gone = !helpEntry.help || !helpEntry.help.isConnected || helpEntry.help.parentNode !== host;
+    if (gone) {
+      var help = toolButton(host, texts.help, 'help');
+      var git = toolButton(host, texts.github, 'github');
+      help.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openHelp(); });
+      git.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openRepo(); });
+      host.appendChild(help);
+      host.appendChild(git);
+      helpEntry = { help: help, git: git, lang: lang, announced: helpEntry.announced };
+      if (!helpEntry.announced) {
+        helpEntry.announced = true;
+        log('в шапку добавлены кнопки «' + texts.help + '» и «' + texts.github + '»');
+      }
+      return;
+    }
+    if (lang !== helpEntry.lang) {
+      helpEntry.help.textContent = texts.help;
+      helpEntry.git.textContent = texts.github;
+      helpEntry.lang = lang;
+      if (helpPanel && helpPanel.style.display !== 'none') renderHelp(lang);
+    }
+  }
+
+  function openRepo() {
+    supportReady.then(function (info) {
+      var url = info && info.repo;
+      if (!url) { log('адрес репозитория не пришёл из хоста'); return; }
+      invoke('open_link', { url: url })
+        .then(function () { log('открываем страницу проекта: ' + url); })
+        .catch(function (e) { log('ссылка не открыта: ' + url + ' — ' + e); });
+    });
+  }
+
+  function styleHelp(box) {
+    var css = {
+      h4: 'margin:14px 0 3px;font-size:13px;font-weight:600;color:#e7e9ee;',
+      p: 'margin:0 0 6px;',
+      ul: 'margin:0 0 8px;padding-left:18px;',
+      li: 'margin:2px 0;',
+      code: 'font:12px ui-monospace,Consolas,monospace;background:#14171d;border:1px solid #2b313c;'
+        + 'border-radius:5px;padding:1px 4px;color:#cdd5e2;',
+      b: 'color:#e7e9ee;font-weight:600;',
+      a: 'color:#9fb6ff;',
+    };
+    Object.keys(css).forEach(function (tag) {
+      var nodes = box.querySelectorAll(tag);
+      for (var i = 0; i < nodes.length; i++) nodes[i].setAttribute('style', css[tag]);
+    });
+  }
+
+  function renderHelp(lang) {
+    var box = helpPanel && helpPanel.querySelector('[data-role=body]');
+    if (!box) return;
+    var texts = helpText(lang);
+    var paint = function (text) {
+      var doc = null;
+      try {
+        doc = new DOMParser().parseFromString(text, 'text/html');
+      } catch (e) {
+        doc = null;
+      }
+      var section = doc
+        && (doc.querySelector('[data-lang="' + lang + '"]') || doc.querySelector('[data-lang="ru"]'));
+      if (!section) {
+        box.textContent = texts.missing;
+        return;
+      }
+      // innerHTML: скрипты так не выполняются, а файл лежит рядом с программой и редактируется
+      // только человеком из репозитория.
+      box.innerHTML = section.innerHTML;
+      styleHelp(box);
+    };
+    if (helpHtml) { paint(helpHtml); return; }
+    box.textContent = texts.loading;
+    fetch('./help.html', { cache: 'default' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (text) { helpHtml = text; paint(text); })
+      .catch(function (e) {
+        box.textContent = texts.missing;
+        log('help.html не прочитался: ' + e);
+      });
+  }
+
+  function buildHelpPanel() {
+    if (helpPanel) return helpPanel;
+    var texts = helpText(uiLang());
+    var overlay = el('div', 'position:fixed;inset:0;z-index:2147483000;background:rgba(8,10,14,.62);'
+      + 'display:none;align-items:center;justify-content:center;padding:24px;');
+    var card = el('div', STYLE + 'background:#1b1e25;border:1px solid #343a46;border-radius:14px;'
+      + 'box-shadow:0 18px 60px rgba(0,0,0,.5);width:min(760px,100%);max-height:88vh;overflow:auto;'
+      + 'padding:18px 20px;');
+
+    var head = el('div', 'display:flex;align-items:baseline;justify-content:space-between;gap:12px;');
+    var title = el('div', 'font-size:16px;font-weight:600;margin-bottom:6px;', texts.title);
+    title.setAttribute('data-role', 'title');
+    var version = el('div', 'font-size:11px;color:#7f8896;', '');
+    version.setAttribute('data-role', 'version');
+    head.appendChild(title);
+    head.appendChild(version);
+    card.appendChild(head);
+
+    var body = el('div', 'line-height:1.5;color:#c8cfdc;', '');
+    body.setAttribute('data-role', 'body');
+    card.appendChild(body);
+
+    var row = el('div', 'display:flex;flex-wrap:wrap;align-items:center;margin:14px 0 8px;');
+    var bGit = el('button', BTN_MAIN, texts.github);
+    bGit.setAttribute('data-act', 'github');
+    var bReport = el('button', BTN, texts.report);
+    bReport.setAttribute('data-act', 'report');
+    var bMail = el('button', BTN, texts.mail);
+    bMail.setAttribute('data-act', 'mail');
+    var bClose = el('button', BTN, texts.close);
+    bClose.setAttribute('data-act', 'close');
+    [bGit, bReport, bMail, bClose].forEach(function (b) { row.appendChild(b); });
+    card.appendChild(row);
+
+    card.appendChild(el('div', 'font-size:11px;color:#7f8896;line-height:1.5;', texts.footer));
+    var status = el('div', 'font-size:12px;margin-top:6px;min-height:16px;color:#9fb6ff;', '');
+    status.setAttribute('data-role', 'status');
+    card.appendChild(status);
+
+    overlay.appendChild(card);
+    overlay.addEventListener('mousedown', function (e) {
+      if (e.target === overlay) closeHelp();
+    });
+    overlay.addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('[data-act]') : null;
+      if (!btn) return;
+      e.preventDefault();
+      var act = btn.getAttribute('data-act');
+      if (act === 'close') closeHelp();
+      else if (act === 'github') openRepo();
+      else if (act === 'report') { closeHelp(); openReport(); }
+      else if (act === 'mail') helpMail();
+    });
+    document.body.appendChild(overlay);
+    helpPanel = overlay;
+    return overlay;
+  }
+
+  function helpMail() {
+    supportReady.then(function (info) {
+      var mail = info && info.email;
+      if (!mail) return;
+      var subject = 'iohub-desktop' + (info.version ? ' ' + info.version : '') + ': вопрос по программе';
+      var url = 'mailto:' + mail + '?subject=' + encodeURIComponent(subject);
+      invoke('open_link', { url: url })
+        .then(function () { helpStatus('открываем письмо на ' + mail); })
+        .catch(function (e) { helpStatus(String(e), true); });
+    });
+  }
+
+  function helpStatus(msg, bad) {
+    var box = helpPanel && helpPanel.querySelector('[data-role=status]');
+    if (!box) return;
+    box.textContent = msg || '';
+    box.style.color = bad ? '#ff9c9c' : '#9fb6ff';
+  }
+
+  function openHelp() {
+    var overlay = buildHelpPanel();
+    var lang = uiLang();
+    var title = overlay.querySelector('[data-role=title]');
+    if (title) title.textContent = helpText(lang).title;
+    renderHelp(lang);
+    supportReady.then(function (info) {
+      var box = helpPanel && helpPanel.querySelector('[data-role=version]');
+      if (box && info && info.version) box.textContent = 'версия ' + info.version;
+    });
+    overlay.style.display = 'flex';
+    helpStatus('');
+  }
+
+  function closeHelp() {
+    if (helpPanel) helpPanel.style.display = 'none';
+  }
+
+  window.__iohubHelp = {
+    open: openHelp,
+    close: closeHelp,
+    // Где лежат настройки и журнал — первый вопрос при любой неполадке.
+    paths: function () { return support; },
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && helpPanel && helpPanel.style.display !== 'none') closeHelp();
+  });
+  // Переключатель языка меняет и наши подписи.
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.tagName === 'SELECT') ensureHelpEntry();
+  }, true);
+  setInterval(ensureHelpEntry, 1200);
+  ensureHelpEntry();
+
   // Кнопка «Сообщить об ошибке» в меню и любые ссылки наружу.
   var REPORT_WORDS = ['сообщить об ошибке', 'report a problem', 'сообщить о проблеме'];
   function outerText(node) {
@@ -866,6 +1188,9 @@
     if (isReportTrigger(e.target)) {
       e.preventDefault();
       e.stopPropagation();
+      // Событие до наших окон не дойдёт, поэтому окно справки закрываем прямо здесь —
+      // иначе оно останется висеть под панелью отчёта.
+      closeHelp();
       log('кнопка «сообщить об ошибке» перехвачена, открыта панель отчёта');
       openReport();
       return;
