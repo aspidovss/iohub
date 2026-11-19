@@ -47,6 +47,21 @@ LINKS_PREVIOUS = [
     "links:{get firmware(){return window.__iohubFirmwareLink||null},legacy:",
 ]
 
+# Знак бренда в шапке. Это не файл, а data-URI SVG прямо в конфигурации бренда, поэтому
+# убирается здесь же, рядом с остальными правками. Пустое значение интерфейс переваривает
+# штатно: в шапке заложен выбор «есть картинка — картинка, нет — название текста», а список
+# устройств рисует логотип только при непустом значении. Руками дамп не правим.
+LOGO_RE = re.compile(r"logo:`data:image/svg\+xml,[^`]*`")
+LOGO_NEW = "logo:``"
+
+# Версия самого интерфейса зашита в его модуль числом (в двух местах одно и то же значение),
+# наружу она не отдаётся. Достаём её на сборке и кладём в <meta> страницы: так её видит и
+# человек внизу настроек, и отчёт о проблеме. Имя файла модуля на версию не похоже,
+# поэтому ищем именно число в обратных кавычках.
+UI_VERSION_RE = re.compile(r"`(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)`")
+UI_VERSION_META = '<meta name="iohub-ui-version" content="{version}">'
+TITLE_RE = re.compile(r"<title>[^<]*</title>")
+
 # Вывеска окна. Страница приносит заголовок бренда, а программа называется иначе;
 # сам интерфейс заголовок не меняет, так что достаточно правки в index.html.
 TITLE_OLD = "<title>IO Hub</title>"
@@ -67,6 +82,37 @@ def patch_brand_links(assets: Path) -> str:
             f.write_text(text.replace(LINKS_ANCHOR, LINKS_PATCH, 1), encoding="utf-8")
             return f.name
     raise SystemExit("не нашёл конфигурацию ссылок в assets/index-*.js — проверь дамп интерфейса")
+
+
+def patch_brand_logo(assets: Path) -> str:
+    """Убирает знак бренда из шапки. Возвращает, что с ним случилось."""
+    for f in sorted(assets.glob("index-*.js")):
+        text = f.read_text(encoding="utf-8")
+        if LOGO_RE.search(text):
+            f.write_text(LOGO_RE.sub(LOGO_NEW, text), encoding="utf-8")
+            return f"убран ({f.name})"
+        if LOGO_NEW in text:
+            return f"уже убран ({f.name})"
+    return "не найден"
+
+
+def ui_version(assets: Path) -> str:
+    """Версия интерфейса из его главного модуля. Пустая строка, если число не нашлось."""
+    for f in sorted(assets.glob("index-*.js")):
+        found = UI_VERSION_RE.findall(f.read_text(encoding="utf-8"))
+        if found:
+            return found[0]
+    return ""
+
+
+def add_ui_version_meta(html: str, version: str) -> str:
+    """Дописывает в страницу версию интерфейса — её читает шим для надписи и отчёта."""
+    if not version or UI_VERSION_META.split("{")[0] in html:
+        return html
+    if not TITLE_RE.search(html):
+        return html
+    return TITLE_RE.sub(lambda m: m.group(0) + "\n    " + UI_VERSION_META.format(version=version),
+                        html, count=1)
 
 
 def main() -> None:
@@ -115,14 +161,18 @@ def main() -> None:
     titled = TITLE_OLD in html
     if titled:
         html = html.replace(TITLE_OLD, TITLE_NEW)
+    version = ui_version(SRC / "assets")
+    html = add_ui_version_meta(html, version)
 
     (DST / "index.html").write_text(html + "\n", encoding="utf-8")
     patched = patch_brand_links(DST / "assets")
+    logo = patch_brand_logo(DST / "assets")
     count = len([p for p in (DST / "assets").rglob("*") if p.is_file()])
     sign = "iohub-desktop" if titled else "как в дампе"
     help = "help.html" if (DST / "help.html").is_file() else "НЕТ"
     print(f"webview собран: index.html (шим внедрён), assets: {count}, "
-          f"ссылки бренда: {patched}, вывеска окна: {sign}, зонд: probe.html, справка: {help}")
+          f"ссылки бренда: {patched}, знак бренда: {logo}, версия интерфейса: {version or 'НЕ НАЙДЕНА'}, "
+          f"вывеска окна: {sign}, зонд: probe.html, справка: {help}")
 
 
 if __name__ == "__main__":
