@@ -12,6 +12,7 @@ mod hid;
 use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Manager, State};
@@ -290,6 +291,50 @@ fn window_close(app: AppHandle) {
 
 // ---------------------------------------------------------------- support
 
+/// Календарь из числа суток с 1970 года (алгоритм Говарда Хиннанта). Специально без
+/// внешней библиотеки: программа собирается офлайн, а дата нужна ровно одна строка.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as i64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if month <= 2 { y + 1 } else { y }, month, day)
+}
+
+/// Дата и время в UTC: нужны и номеру отчёта, и его шапке.
+fn utc_now() -> Option<(i64, u32, u32, u32, u32, u32)> {
+    let secs = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs() as i64;
+    let (y, m, d) = civil_from_days(secs / 86_400);
+    let rest = secs.rem_euclid(86_400);
+    Some((y, m, d, (rest / 3600) as u32, (rest / 60 % 60) as u32, (rest % 60) as u32))
+}
+
+/// Номер отчёта. У веб-версии конфигуратора свой формат «IO-20261119-2CA14D0F» — берём ту
+/// же форму с нашим префиксом, чтобы по номеру было видно, откуда пришёл случай.
+fn new_ticket() -> String {
+    let (y, m, d) = match utc_now() {
+        Some(t) => (t.0, t.1, t.2),
+        None => return "HUB-00000000-00000000".into(),
+    };
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    // Перемешивание времени и идентификатора процесса вместо целого генератора случайных
+    // чисел: номер не секретный, он должен лишь различать два отчёта одной секунды.
+    let seed = now ^ ((std::process::id() as u64) << 32) ^ ((y as u64) << 16);
+    let mut r = seed
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1_442_695_040_888_963_407);
+    r ^= r >> 31;
+    format!("HUB-{y:04}{m:02}{d:02}-{r:08X}", r = (r >> 32) as u32)
+}
+
 /// Куда писать о проблемах. Наружу программа открывает только эту почту и свои задачи на
 /// GitHub — других ссылок список не пропускает.
 const SUPPORT_EMAIL: &str = "iohub@aspidov.ru";
@@ -405,13 +450,16 @@ struct Report {
 }
 
 /// Собирает отчёт о проблеме: версия, система, устройства и хвост журнала. problem — текст
-/// пользователя, extra — что добавила страница (экран, версия интерфейса, счётчики).
+/// пользователя, extra — что добавила страница (экран, версия интерфейса, счётчики),
+/// actions — чем человек нажимал перед поломкой, ticket — номер случая из окна отчёта.
 #[tauri::command]
 fn report_bundle(
     app: AppHandle,
     state: State<SharedState>,
     problem: Option<String>,
     extra: Option<String>,
+    actions: Option<String>,
+    ticket: Option<String>,
     file_name: Option<String>,
 ) -> Report {
     let mut parts: Vec<String> = Vec::new();
@@ -421,6 +469,15 @@ fn report_bundle(
         std::env::consts::OS,
         std::env::consts::ARCH
     ));
+    let ticket = ticket
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(new_ticket);
+    parts.push(format!("отчёт {ticket}"));
+    match utc_now() {
+        Some((y, mo, d, h, mi, s)) => parts.push(format!("составлен {y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02} UTC")),
+        None => parts.push("составлен: время недоступно".to_string()),
+    }
     parts.push(format!("папка данных: {}", redact(&data_dir(&app).display().to_string())));
     parts.push(String::new());
     parts.push("что не работает:".to_string());
@@ -433,6 +490,11 @@ fn report_bundle(
         parts.push(String::new());
         parts.push("со стороны страницы:".to_string());
         parts.push(redact(&extra));
+    }
+    if let Some(actions) = actions.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        parts.push(String::new());
+        parts.push("действия перед обращением:".to_string());
+        parts.push(redact(&actions));
     }
 
     parts.push(String::new());
