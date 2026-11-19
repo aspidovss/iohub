@@ -1,0 +1,38 @@
+# Строки в репозитории хранятся с переводом строки LF, и при выгрузке он не
+# меняется: дерево одинаковое на Windows и на Linux, а файлы дампа интерфейса не
+# обрастают возвратом каретки при каждой выгрузке.
+* text=auto eol=lf
+
+# Двоичные файлы не правим и не считаем текстом
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.gz binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+
+# Явно текстовые — на случай если auto определит их неверно
+*.rs text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
+
+# Скрипты проверки железа запускаются в Windows PowerShell, ему нужен CRLF
+*.ps1 text eol=crlf

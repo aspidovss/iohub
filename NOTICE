@@ -1,0 +1,55 @@
+NOTICE
+======
+
+iohub-desktop — сторонняя программа. Она не разработана, не одобрена и не
+поддерживается владельцами бренда IO. «IO», «IO Hub», «IO by Red Square» и
+связанные с ними обозначения и логотипы — знаки соответствующих владельцев.
+Название программы и её иконка не используют чужой логотип.
+
+
+Что распространяется под MIT (файл LICENSE)
+-------------------------------------------
+
+* desktop/src, desktop/build.rs — хост на Rust и мост WebHID;
+* webview/webhid-shim.js — мост WebHID для интерфейса;
+* desktop/prepare_webview.py, desktop/make_icon.py, desktop/tools — скрипты сборки;
+* desktop/icons — иконки, нарисованные для этой программы;
+* README.md, SECURITY.md, CHANGELOG.md, THIRD_PARTY_NOTICES.md.
+
+
+Что под MIT НЕ распространяется
+-------------------------------
+
+vendor/io-web/ — сохранённая копия веб-интерфейса, опубликованного на
+web.io.vision (клавиатурный конфигуратор «IO Hub»). Этот код, его графика,
+тексты и каталог устройств принадлежат их правообладателю и не лицензируются
+нами. Кладём его в репозиторий только для того, чтобы офлайн-программу можно
+было собрать и запустить: без неё интерфейс не существует. Мы не заявляем прав
+на этот код и снимаем его по первой просьбе правообладателя — iohub@aspidov.ru.
+
+Программа меняет собранный файл интерфейса в четырёх местах (см. prepare_webview.py):
+выключает ссылку на «старый софт», делает адрес списка прошивок настраиваемым,
+включает канал «Почта» в форме об ошибке и меняет подпись окна на нейтральную.
+Правки видны в скрипте, исходный дамп остаётся в vendor/io-web/ без изменений.
+
+
+Системные компоненты
+--------------------
+
+Microsoft Edge WebView2 Runtime (Windows) и WebKitGTK (Linux) — их устанавливает
+система, мы их не включаем в поставку. Остальные библиотеки — в THIRD_PARTY_NOTICES.md.
+
+
+English summary
+---------------
+
+iohub-desktop is an unofficial, third-party desktop host for the IO keyboard web
+app and is not affiliated with, endorsed or sponsored by the IO brand owners.
+"IO", "IO Hub" and related marks belong to their owners.
+
+Code written for this project (Rust host, WebHID bridge, build scripts, docs) is
+MIT licensed. The saved copy of the IO Hub web interface under vendor/io-web/ is
+NOT MIT licensed: it belongs to its own copyright holder and is included only so
+the offline app can be built and run; it will be removed upon the holder's
+request to iohub@aspidov.ru. WebView2 / WebKitGTK are system components and are
+not redistributed here.

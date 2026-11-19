@@ -1,0 +1,23 @@
+# webview/ собирается скриптом desktop/prepare_webview.py из vendor/io-web/
+# наружу публикуем только наш файл-мост
+/webview/*
+!/webview/webhid-shim.js
+
+# артефакты сборки
+/desktop/target/
+/desktop/dist/
+/desktop/gen/
+*.log
+
+# черновики и снимки этой машины
+/IO Hub.html
+/IO Hub_files/
+/probe/
+/shot-*.png
+*.tmp
+
+# операционные системы и редакторы
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
