@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "iohub-desktop",
+  "version": "0.2.0",
+  "identifier": "vision.io.hub.desktop",
+  "build": {
+    "frontendDist": "../webview"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "iohub-desktop",
+        "width": 1240,
+        "height": 840,
+        "minWidth": 900,
+        "minHeight": 620,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.io.vision; font-src 'self' https://*.io.vision; connect-src 'self' ipc: http://ipc.localhost blob: https://*.io.vision; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "category": "Utility",
+    "publisher": "iohub-desktop contributors",
+    "homepage": "https://github.com/aspidovss/iohub",
+    "copyright": "© 2026 iohub-desktop contributors",
+    "shortDescription": "Клавиатуры IO без интернета",
+    "longDescription": "Офлайн-программа для настройки клавиатур IO: интерфейс конфигуратора встроен внутрь, доступ к устройству идёт через собственный мост WebHID. Без сети, без аккаунта и без обновления прошивки по своей воле.",
+    "windows": {
+      "nsis": {
+        "languages": ["Russian"]
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}
