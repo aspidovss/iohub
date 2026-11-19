@@ -1,0 +1,1 @@
+function e(e=`emitter`){let t=new Set;return{emit(n){for(let r of[...t])try{r(n)}catch(t){console.error(`[wp] подписчик ${e} упал`,t)}},subscribe(e){return t.add(e),()=>{t.delete(e)}},get size(){return t.size},clear(){t.clear()}}}export{e as t};

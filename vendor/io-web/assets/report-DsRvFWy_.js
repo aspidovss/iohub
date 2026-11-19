@@ -1,0 +1,1 @@
+var e=(e,t)=>t?{key:e,params:t}:{key:e};function t(e){return e&&typeof e==`object`&&`code`in e&&typeof e.code==`string`?{key:`error.${e.code}`}:{key:e instanceof Error?e.message:String(e)}}export{e as n,t};
