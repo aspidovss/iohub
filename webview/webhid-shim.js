@@ -651,10 +651,77 @@
     .catch(function () { return support; });
 
   function reportFileName() {
+    // Имя файла заканчивается теми же восемью символами, что и номер отчёта: по ним файл
+    // и письмо из одной истории находятся без сверки.
+    if (!reportTicket) reportTicket = newTicket();
     var d = new Date();
     function pad(n) { return (n < 10 ? '0' : '') + n; }
-    return 'iohub-report-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
-      + '-' + pad(d.getHours()) + pad(d.getMinutes());
+    return 'iohub-report-' + d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate())
+      + '-' + reportTicket.slice(-8);
+  }
+
+  // Номер отчёта. У веб-версии свой формат «IO-20261119-2CA14D0F»; берём ту же форму,
+  // но с нашим префиксом: по нему сразу видно, откуда пришёл отчёт. Номер выдаётся один
+  // раз на открытое окно, чтобы «Обновить отчёт», письмо и задача на GitHub говорили об
+  // одном и том же случае.
+  var reportTicket = '';
+
+  function newTicket() {
+    function dec(n) { return (n < 10 ? '0' : '') + n; }
+    function hex8(n) { var s = (n >>> 0).toString(16).toUpperCase(); while (s.length < 8) s = '0' + s; return s; }
+    var d = new Date();
+    var rand = (hex8(Math.floor(Math.random() * 0x100000000))
+      + hex8(Math.floor(Math.random() * 0x100000000))).slice(0, 8);
+    // Дата в номере — по UTC, как и штамп времени в самом отчёте: иначе у отчёта,
+    // составленного поздно вечером, номер и дата расходились бы на сутки.
+    return 'HUB-' + d.getUTCFullYear() + dec(d.getUTCMonth() + 1) + dec(d.getUTCDate()) + '-' + rand;
+  }
+
+  // Что происходило на экране перед проблемой. Сама страница ведёт свой журнал действий
+  // (переключатель «Действия на сайте» в настройках), но он лежит внутри неё и выключен
+  // по умолчанию, поэтому держим короткий свой список: последние 60 нажатий кнопок и ссылок.
+  var actions = [];
+  var ACTIONS_MAX = 60;
+
+  function actionLabel(target) {
+    var hit = target && target.closest ? target.closest('button,a,[role="button"],select,input') : null;
+    if (!hit) return '';
+    if ((reportPanel && reportPanel.contains(hit)) || (helpPanel && helpPanel.contains(hit))
+        || (toastBox && toastBox.contains(hit))) return '';
+    var text = (hit.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text) text = hit.getAttribute('aria-label') || hit.getAttribute('title') || '';
+    if (!text && hit.tagName === 'SELECT' && hit.options) {
+      text = 'переключатель: ' + (hit.getAttribute('aria-label') || '')
+        + ' = ' + (hit.options[hit.selectedIndex] ? hit.options[hit.selectedIndex].textContent.trim() : '?');
+    }
+    text = text.replace(/\s+/g, ' ').trim();
+    return text.length > 60 ? text.slice(0, 60) + '…' : text;
+  }
+
+  function recordAction(target) {
+    var label = actionLabel(target);
+    if (!label) return;
+    var last = actions[actions.length - 1];
+    var now = Date.now();
+    // Двойной клик и клик с удержанием рисуют одно и то же действие несколько раз подряд.
+    if (last && last.label === label && now - last.at < 700) return;
+    actions.push({ label: label, at: now });
+    if (actions.length > ACTIONS_MAX) actions.shift();
+  }
+
+  function actionsText() {
+    if (!actions.length) return 'действий не записано';
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return actions.map(function (a) {
+      var d = new Date(a.at);
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '  ' + a.label;
+    }).join('\n');
+  }
+
+  // Версия интерфейса: её кладёт в страницу сборщик (см. prepare_webview.py).
+  function uiVersion() {
+    var m = document.querySelector('meta[name="iohub-ui-version"]');
+    return (m && m.content) || 'не записана';
   }
 
   // Что происходит на экране в момент сборки отчёта — это к журналу хоста не добавить.
@@ -664,6 +731,8 @@
       if (dev.opened) opened.push(hex(dev.vendorId) + ':' + hex(dev.productId) + ' ' + dev.productName);
     });
     return [
+      'интерфейс: ' + uiVersion(),
+      'язык интерфейса: ' + uiLang(),
       'шаг приложения: #' + (location.hash || '/'),
       'заголовок: ' + (document.title || '—'),
       'движок: ' + (navigator.userAgent || '—'),
@@ -703,6 +772,9 @@
       + 'box-shadow:0 18px 60px rgba(0,0,0,.5);width:min(720px,100%);max-height:88vh;overflow:auto;padding:18px 20px;');
 
     card.appendChild(el('div', 'font-size:16px;font-weight:600;margin-bottom:6px;', 'Сообщить об ошибке'));
+    var ticketLine = el('div', 'font-size:12px;color:#9fb6ff;margin-bottom:8px;', '');
+    ticketLine.setAttribute('data-role', 'ticket');
+    card.appendChild(ticketLine);
     card.appendChild(el('div', 'color:#aab2c0;margin-bottom:12px;line-height:1.45;',
       'Программа работает без интернета, поэтому жалоба никуда не уходит сама. Опишите проблему '
       + 'и выберите, как её передать: письмом на ' + (support.email || 'почту поддержки')
@@ -781,6 +853,8 @@
     return invoke('report_bundle', {
       problem: problemText(),
       extra: reportFacts(),
+      actions: actionsText(),
+      ticket: reportTicket,
       fileName: reportFileName(),
     })
       .then(function (r) {
@@ -797,7 +871,11 @@
   }
 
   function openReport() {
+    // Каждое открытие панели — новый случай и новый номер; «Обновить отчёт» номер сохраняет.
+    reportTicket = newTicket();
     buildReportPanel().style.display = 'flex';
+    var line = reportPanel.querySelector('[data-role=ticket]');
+    if (line) line.textContent = 'Номер отчёта ' + reportTicket + ' — назовите его в письме или задаче.';
     var area = reportPanel.querySelector('[data-role=problem]');
     setTimeout(function () { if (area) area.focus(); }, 30);
     refreshReport();
@@ -819,9 +897,11 @@
       });
   }
 
-  function copyReport() {
+  // Копируем через скрытое поле: execCommand в WebView2 жив, а clipboard API без жеста
+  // пользователя иногда молча отказывает.
+  function copyToClipboard(text) {
     var ta = el('textarea', 'position:fixed;left:-2000px;top:0;');
-    ta.value = reportState.text;
+    ta.value = text == null ? '' : String(text);
     document.body.appendChild(ta);
     ta.select();
     var ok = false;
@@ -831,11 +911,62 @@
       ok = false;
     }
     document.body.removeChild(ta);
-    if (ok) {
+    return ok;
+  }
+
+  function copyReport() {
+    if (copyToClipboard(reportState.text)) {
       setStatus('отчёт в буфере обмена');
     } else {
       setStatus('не скопировалось — выделите текст в окне отчёта и нажмите Ctrl+C', true);
     }
+  }
+
+  // Плашка внизу окна. Нужна для случаев, когда клик по ссылке программу не устраивает:
+  // молча убитая ссылка выглядит как поломка, а здесь видно, что именно не так, и адрес
+  // можно забрать себе в буфер обмена.
+  var toastBox = null;
+  var toastTimer = null;
+
+  function ensureToast() {
+    if (toastBox) return toastBox;
+    toastBox = el('div', 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);'
+      + 'z-index:2147483010;display:none;align-items:center;gap:10px;'
+      + 'max-width:min(720px,92vw);background:#20242c;border:1px solid #4a5568;border-radius:10px;'
+      + 'box-shadow:0 10px 32px rgba(0,0,0,.45);padding:10px 12px;' + STYLE);
+    toastBox.setAttribute('data-iohub', 'toast');
+    var msg = el('div', 'line-height:1.4;color:#ffd9a0;', '');
+    msg.setAttribute('data-role', 'toast-msg');
+    var copy = el('button', BTN, '');
+    copy.setAttribute('data-role', 'toast-copy');
+    copy.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var texts = helpText(uiLang());
+      var link = toastBox.getAttribute('data-url') || '';
+      msg.textContent = copyToClipboard(link) ? texts.copied + ': ' + link : texts.copyFail;
+    });
+    toastBox.appendChild(msg);
+    toastBox.appendChild(copy);
+    document.body.appendChild(toastBox);
+    return toastBox;
+  }
+
+  function showToast(message, url) {
+    var texts = helpText(uiLang());
+    var box = ensureToast();
+    box.querySelector('[data-role="toast-msg"]').textContent = message;
+    var copy = box.querySelector('[data-role="toast-copy"]');
+    if (url) {
+      box.setAttribute('data-url', url);
+      copy.textContent = texts.copy;
+      copy.style.display = '';
+    } else {
+      copy.style.display = 'none';
+    }
+    box.style.display = 'flex';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { box.style.display = 'none'; }, url ? 15000 : 6000);
   }
 
   function excerpt(n) {
@@ -845,12 +976,22 @@
   }
 
   function sendMail() {
-    var subject = 'iohub-desktop: ' + (problemText() || 'не работает настройка клавиатуры').slice(0, 70);
-    var body = problemText() + '\n\n---\n' + excerpt(1200)
-      + '\n\nПолный отчёт лежит в подпапке reports папки данных программы — приложите его, пожалуйста, к письму.';
-    var href = 'mailto:' + (support.email || '') + '?subject=' + encodeURIComponent(subject)
-      + '&body=' + encodeURIComponent(body);
     saveReport().then(function () {
+      return supportReady;
+    }).then(function (info) {
+      var mail = info && info.email;
+      if (!mail) {
+        // Хост не прислал адрес: честнее сказать это прямо, чем получить отказ по белому списку.
+        setStatus('адрес почты поддержки не пришёл в программу', true);
+        return;
+      }
+      var subject = (reportTicket ? reportTicket + ' · ' : '') + 'iohub-desktop: '
+        + (problemText() || 'не работает настройка клавиатуры').slice(0, 70);
+      var body = problemText() + '\n\n---\n' + excerpt(1200)
+        + '\n\nФайл отчёта ' + reportState.fileName + ' лежит в подпапке reports папки данных'
+        + ' программы — приложите его, пожалуйста, к письму.';
+      var href = 'mailto:' + mail + '?subject=' + encodeURIComponent(subject)
+        + '&body=' + encodeURIComponent(body);
       invoke('open_link', { url: href })
         .then(function () { setStatus('открываем почтовую программу'); })
         .catch(function (e) { setStatus(String(e), true); });
@@ -859,10 +1000,15 @@
 
   function openIssue() {
     var base = support.issues || 'https://github.com/aspidovss/iohub/issues/new';
-    var title = (problemText() || 'Не работает настройка клавиатуры').slice(0, 80);
-    var body = '**Что случилось**\n\n' + (problemText() || '—') + '\n\n**Журнал**\n\n```\n'
-      + excerpt(1800) + '\n```\n\nПолный отчёт лежит в подпапке reports папки данных программы.';
-    var href = base + '&title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+    var title = ((reportTicket ? reportTicket + ' ' : '')
+      + (problemText() || 'Не работает настройка клавиатуры')).slice(0, 90);
+    var body = '**Что случилось**\n\n' + (problemText() || '—')
+      + '\n\n**Номер отчёта:** ' + (reportTicket || '—')
+      + '\n\n**Фрагмент отчёта**\n\n```\n' + excerpt(1800)
+      + '\n```\n\nПолный отчёт ' + reportState.fileName + ' лежит в подпапке reports папки данных'
+      + ' программы — приложите его к задаче, если в фрагменте не видно главного.';
+    var href = base + (base.indexOf('?') === -1 ? '?' : '&') + 'title=' + encodeURIComponent(title)
+      + '&body=' + encodeURIComponent(body);
     saveReport().then(function () {
       invoke('open_link', { url: href })
         .then(function () { setStatus('открываем GitHub в браузере'); })
@@ -874,6 +1020,16 @@
     open: openReport,
     close: closeReport,
     info: function () { return support; },
+    ticket: function () { return reportTicket; },
+    actions: function () { return actions.slice(); },
+    // Для проверки сборки: то же самое, что делают кнопки панели, но без рук.
+    refresh: function () { return refreshReport(); },
+    save: function () { return saveReport(); },
+    write: function (text) {
+      var area = reportPanel && reportPanel.querySelector('[data-role=problem]');
+      if (area) area.value = text == null ? '' : String(text);
+      return problemText();
+    },
   };
 
   // ---------------------------------------------------------------- справка и GitHub
@@ -892,6 +1048,10 @@
       loading: 'Загружаем справку…',
       missing: 'Текст справки не нашёлся внутри программы — проверьте файл help.html в сборке.',
       footer: 'Программа неофициальная: интерфейс и прошивки принадлежат их автору.',
+      version: 'версия ',
+      blocked: 'программа не открывает эту ссылку: ',
+      copy: 'скопировать адрес', copied: 'адрес в буфере обмена',
+      copyFail: 'не скопировалось — адрес записан в журнал программы',
     },
     en: {
       help: 'Help', github: 'GitHub', title: 'Quick help',
@@ -899,6 +1059,10 @@
       loading: 'Loading help…',
       missing: 'The help text is missing from the program — check help.html in the build.',
       footer: 'Unofficial program: the interface and the firmware belong to their author.',
+      version: 'version ',
+      blocked: 'the program does not open this link: ',
+      copy: 'copy address', copied: 'address copied to clipboard',
+      copyFail: 'could not copy — the address is written to the program log',
     },
   };
 
@@ -951,8 +1115,13 @@
     var texts = helpText(lang);
     var host = headerHost();
     if (!host) return;
-    var gone = !helpEntry.help || !helpEntry.help.isConnected || helpEntry.help.parentNode !== host;
-    if (gone) {
+    var live = function (b) { return b && b.isConnected && b.parentNode === host; };
+    if (!live(helpEntry.help) || !live(helpEntry.git)) {
+      // Svelte перерисовывает шапку когда хочет: старый узел мог остаться в прежнем
+      // хосте, а мог исчезнуть совсем. Убираем обе прежние кнопки, иначе в шапке
+      // вырастет вторая пара «Справка»/«GitHub».
+      if (helpEntry.help) helpEntry.help.remove();
+      if (helpEntry.git) helpEntry.git.remove();
       var help = toolButton(host, texts.help, 'help');
       var git = toolButton(host, texts.github, 'github');
       help.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openHelp(); });
@@ -1001,6 +1170,29 @@
     });
   }
 
+  // Справка — текст, а не разметка чужих страниц. Оставляем видимость, выбрасывая то, что
+  // умеет себя вести: встраиваемые теги, обработчики on*, javascript: в ссылках.
+  var HELP_DEAD_TAGS = /^(SCRIPT|IFRAME|OBJECT|EMBED|LINK|STYLE|FORM|BASE|META)$/;
+  function sanitizeHelp(root) {
+    var nodes = root.querySelectorAll('*');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (HELP_DEAD_TAGS.test(n.tagName)) {
+        n.remove();
+        continue;
+      }
+      var attrs = n.attributes;
+      for (var j = attrs.length - 1; j >= 0; j--) {
+        var name = attrs[j].name.toLowerCase();
+        var value = attrs[j].value || '';
+        var bad = name.indexOf('on') === 0 || name === 'src' || name === 'srcdoc'
+          || name === 'formaction' || name === 'data' || name === 'action'
+          || (name === 'href' && /^\s*javascript:/i.test(value));
+        if (bad) n.removeAttribute(attrs[j].name);
+      }
+    }
+  }
+
   function renderHelp(lang) {
     var box = helpPanel && helpPanel.querySelector('[data-role=body]');
     if (!box) return;
@@ -1018,9 +1210,12 @@
         box.textContent = texts.missing;
         return;
       }
-      // innerHTML: скрипты так не выполняются, а файл лежит рядом с программой и редактируется
-      // только человеком из репозитория.
-      box.innerHTML = section.innerHTML;
+      // Справку вставляем из локального файла, но не как есть: в DOCUMENT из DOMParser
+      // ничего не загружается и не выполняется, поэтому вычищаем обработчики on* и теги,
+      // которые что-то подгружают или выполняют, уже там — и только потом переносим в окно.
+      sanitizeHelp(section);
+      box.innerHTML = '';
+      while (section.firstChild) box.appendChild(section.firstChild);
       styleHelp(box);
     };
     if (helpHtml) { paint(helpHtml); return; }
@@ -1122,7 +1317,7 @@
     renderHelp(lang);
     supportReady.then(function (info) {
       var box = helpPanel && helpPanel.querySelector('[data-role=version]');
-      if (box && info && info.version) box.textContent = 'версия ' + info.version;
+      if (box && info && info.version) box.textContent = helpText(uiLang()).version + info.version;
     });
     overlay.style.display = 'flex';
     helpStatus('');
@@ -1139,6 +1334,82 @@
     paths: function () { return support; },
   };
 
+  // Подпись программы внизу экрана настроек. Сама программа неофициальная, и человек
+  // должен видеть прямо в интерфейсе, какая это оболочка, какой интерфейс внутри и где
+  // проект. Ставим строку в конец страницы настроек: там свободное место, а не поверх
+  // чужих кнопок. Вид наследуется от страницы — цвет и шрифт берём у её же текста.
+  var FOOT_TEXTS = {
+    ru: {
+      about: 'неофициальная офлайн-программа для клавиатур IO',
+      ui: 'интерфейс',
+      repo: 'страница проекта',
+      problem: 'сообщить об ошибке',
+    },
+    en: {
+      about: 'unofficial offline program for IO keyboards',
+      ui: 'interface',
+      repo: 'project page',
+      problem: 'report a problem',
+    },
+  };
+
+  var footEntry = { node: null, lang: '' };
+
+  // Экран настроек узнаём по заголовку: классы svelte при следующей сборке интерфейса
+  // другие, а слово «Настройки» на месте остаётся.
+  function settingsPage() {
+    var heads = document.querySelectorAll('h1, h2');
+    for (var i = 0; i < heads.length; i++) {
+      var t = (heads[i].textContent || '').trim().toLowerCase();
+      if (t === 'настройки хаба' || t === 'hub settings') {
+        var page = heads[i].closest('.app') || document.body;
+        var body = page.querySelector('.surface.strong .page') || page.querySelector('.page');
+        return body || null;
+      }
+    }
+    return null;
+  }
+
+  function footLink(text, onClick) {
+    var a = document.createElement('button');
+    a.setAttribute('style', 'appearance:none;background:none;border:0;padding:0;cursor:pointer;'
+      + 'font:inherit;color:inherit;text-decoration:underline;opacity:.85;');
+    a.textContent = text;
+    a.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); onClick(); });
+    return a;
+  }
+
+  function buildFoot(lang) {
+    var texts = FOOT_TEXTS[lang] || FOOT_TEXTS.en;
+    var box = document.createElement('div');
+    box.setAttribute('data-iohub', 'foot');
+    box.setAttribute('style', 'margin-top:18px;padding-top:10px;font-size:12px;line-height:1.5;'
+      + 'opacity:.72;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;');
+    var version = support.version ? ' ' + support.version : '';
+    var line = document.createElement('span');
+    line.textContent = 'iohub-desktop' + version + ' — ' + texts.about + ' · '
+      + texts.ui + ' ' + uiVersion();
+    box.appendChild(line);
+    box.appendChild(footLink(texts.repo, openRepo));
+    box.appendChild(footLink(texts.problem, function () {
+      // Из настроек человек обычно уходит в отчёт, а не в справочное окно.
+      openReport();
+    }));
+    return box;
+  }
+
+  function ensureFoot() {
+    var page = settingsPage();
+    var lang = uiLang();
+    if (!page) return;
+    var live = footEntry.node && footEntry.node.isConnected && footEntry.node.parentNode === page;
+    if (live && footEntry.lang === lang) return;
+    if (footEntry.node) footEntry.node.remove();
+    var node = buildFoot(lang);
+    page.appendChild(node);
+    footEntry = { node: node, lang: lang };
+  }
+
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && helpPanel && helpPanel.style.display !== 'none') closeHelp();
   });
@@ -1146,25 +1417,31 @@
   document.addEventListener('change', function (e) {
     if (e.target && e.target.tagName === 'SELECT') ensureHelpEntry();
   }, true);
-  setInterval(ensureHelpEntry, 1200);
+  setInterval(function () {
+    ensureHelpEntry();
+    ensureFoot();
+  }, 1200);
   ensureHelpEntry();
+  ensureFoot();
 
   // Кнопка «Сообщить об ошибке» в меню и любые ссылки наружу.
   var REPORT_WORDS = ['сообщить об ошибке', 'report a problem', 'сообщить о проблеме'];
   function outerText(node) {
     var get = function (name) { return node.getAttribute ? (node.getAttribute(name) || '') : ''; };
-    return ((node.innerText || '') + ' ' + get('aria-label') + ' ' + get('title'))
+    // textContent, а не innerText: второй каждый раз заставляет браузер заново считать
+    // расположение элементов, а нам хватает простого текста узла.
+    return ((node.textContent || '') + ' ' + get('aria-label') + ' ' + get('title'))
       .replace(/\s+/g, ' ').toLowerCase().trim();
   }
   function isReportTrigger(target) {
-    var node = target;
-    for (var depth = 0; node && depth < 6; node = node.parentElement, depth++) {
-      if (reportPanel && reportPanel.contains(node)) return false;
-      var t = outerText(node);
-      if (!t || t.length > 40) continue;
-      if (REPORT_WORDS.indexOf(t) !== -1) return node;
-    }
-    return null;
+    // Смотрим только на ближайшую настоящую кнопку или ссылку: перебирать всех предков
+    // каждого клика по странице конфигуратора незачем.
+    var hit = target && target.closest ? target.closest('button,a,[role="button"]') : null;
+    if (!hit) return null;
+    // В окнах отчёта и справки свои обработчики: их кнопки здесь не перехватываем.
+    if ((reportPanel && reportPanel.contains(hit)) || (helpPanel && helpPanel.contains(hit))) return null;
+    var t = outerText(hit);
+    return (t && t.length <= 40 && REPORT_WORDS.indexOf(t) !== -1) ? hit : null;
   }
   function linkOf(target) {
     var node = target;
@@ -1184,7 +1461,18 @@
       return null;
     }
   }
+  function hostOf(url) {
+    if (/^mailto:/i.test(url)) return url.slice(0, 60);
+    try {
+      return new URL(url).host;
+    } catch (e) {
+      return url.slice(0, 60);
+    }
+  }
   document.addEventListener('click', function (e) {
+    // Первым делом — короткий след действий для отчёта: по нему видно, куда человек
+    // нажимал перед поломкой. Собирается только то, что и так лежит в интерфейсе.
+    recordAction(e.target);
     if (isReportTrigger(e.target)) {
       e.preventDefault();
       e.stopPropagation();
@@ -1203,7 +1491,13 @@
     e.stopPropagation();
     invoke('open_link', { url: url })
       .then(function () { log('ссылка из интерфейса: ' + url); })
-      .catch(function (err) { log('ссылка не открыта: ' + url + ' — ' + err); });
+      .catch(function (err) {
+        log('ссылка не открыта: ' + url + ' — ' + err);
+        // Раз клик уже подавлен, человек обязан увидеть почему: иначе ссылка кажется
+        // сломанной. Адрес можно забрать в буфер обмена и открыть самому.
+        var texts = helpText(uiLang());
+        showToast(texts.blocked + hostOf(url) + ' — ' + err, url);
+      });
   }, true);
 
   // Push path: the Rust reader thread emits every input report the device sends.
