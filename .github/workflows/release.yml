@@ -47,8 +47,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item desktop/target/release/iohub-desktop.exe artifacts/
           Copy-Item desktop/target/release/bundle/nsis/*.exe artifacts/
+          # версия берётся из Cargo.toml, чтобы имя совпадало и по тегу, и при ручном запуске
+          $line = Select-String -Path desktop/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+          $ver = $line.Matches[0].Groups[1].Value
           Compress-Archive -Path desktop/target/release/iohub-desktop.exe `
-            -DestinationPath artifacts/iohub-desktop-windows-portable.zip -Force
+            -DestinationPath "artifacts/iohub-desktop-$ver-portable.zip" -Force
           Get-ChildItem artifacts | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
