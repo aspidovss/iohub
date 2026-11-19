@@ -1,6 +1,6 @@
 [package]
 name = "iohub-desktop"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Офлайн-программа для клавиатур IO: хост на Tauri с собственным мостом WebHID"
 license = "MIT"
