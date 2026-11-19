@@ -5,7 +5,15 @@
 
 import re
 import shutil
+import sys
 from pathlib import Path
+
+# Отчёт печатается по-русски, а консоль в сборочной среде может быть в кодировке
+# Windows (cp1252/cp866) или вовсе без кодировки. Просим Python писать UTF-8, иначе
+# сборка падает на последнем сообщении, когда вся работа уже сделана.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "vendor" / "io-web"

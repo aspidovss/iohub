@@ -77,15 +77,17 @@ cargo tauri build          # NSIS уже в %LOCALAPPDATA%\tauri\NSIS
 
 ## Что осталось: сборка под Linux
 
-На этой машине нет ни WSL, ни Docker, поэтому проверять сборку нечем — список
-сделан по коду, а не по факту сборки.
+На этой машине нет ни WSL, ни Docker, поэтому список собран по коду и по сборке в
+автосборке GitHub: там Linux доходит до компиляции и падает там, где не хватает
+пакетов. Запуск на реальном железе по-прежнему не проверен.
 
 1. Пакеты для Tauri: `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
-   librsvg2-dev libssl-dev pkg-config`. Для hidapi ничего отдельного не требуется:
-   crate `hidapi` 2.6.7 по умолчанию несёт фичу `linux-static-hidraw` и собирает
-   библиотечку hidapi сам; `libudev-dev` и `libusb-1.0-0-dev` пригодятся, только если
-   переключаться на бэкенд `linux-native-dyn-libusb`. Внутри webview менять ничего не
-   нужно: шим — обычный JavaScript, Wry под Linux использует WebKitGTK.
+   librsvg2-dev libssl-dev pkg-config`, плюс `libudev-dev` — на него опирается сборка
+   crate `hidapi` 2.6.7 даже с фичей по умолчанию `linux-static-hidraw` (проверено в
+   автосборке: без `libudev-dev` сборка падает со словами «Unable to find libudev»).
+   `libusb-1.0-0-dev` понадобится только при переходе на бэкенд
+   `linux-native-dyn-libusb`. Внутри webview менять ничего не нужно: шим — обычный
+   JavaScript, Wry под Linux использует WebKitGTK.
 2. Выбор служебного интерфейса. На Windows каждый интерфейс USB — отдельное
    устройство с путём `...&MI_02#...`, и hidapi заполняет `usage_page`/`usage`, чем
    и пользуется фильтр интерфейса (0xFF68/0x0061). На Linux у hidraw-бэкенда эти поля
