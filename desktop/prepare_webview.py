@@ -58,7 +58,10 @@ LOGO_NEW = "logo:``"
 # наружу она не отдаётся. Достаём её на сборке и кладём в <meta> страницы: так её видит и
 # человек внизу настроек, и отчёт о проблеме. Имя файла модуля на версию не похоже,
 # поэтому ищем именно число в обратных кавычках.
-UI_VERSION_RE = re.compile(r"`(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)`")
+# Число бывает и трёх-, и четырёхчастным: 0.8.4-beta.4, а с 0.8.5.1 производитель перешёл
+# на четвёртую часть. Берём то, что встречается чаще всего: одно случайное число в
+# обратных кавычках модулю ничего не стоит содержать, а версия всегда повторяется.
+UI_VERSION_RE = re.compile(r"`(\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.]+)?)`")
 UI_VERSION_META = '<meta name="iohub-ui-version" content="{version}">'
 TITLE_RE = re.compile(r"<title>[^<]*</title>")
 
@@ -98,11 +101,18 @@ def patch_brand_logo(assets: Path) -> str:
 
 def ui_version(assets: Path) -> str:
     """Версия интерфейса из его главного модуля. Пустая строка, если число не нашлось."""
+    found: list[str] = []
     for f in sorted(assets.glob("index-*.js")):
-        found = UI_VERSION_RE.findall(f.read_text(encoding="utf-8"))
-        if found:
-            return found[0]
-    return ""
+        found += UI_VERSION_RE.findall(f.read_text(encoding="utf-8"))
+    if not found:
+        return ""
+    return max(set(found), key=found.count)
+
+
+def release_version() -> str:
+    """Полный номер релиза из VERSION в корне репозитория. Пустая строка, если файла нет."""
+    f = ROOT / "VERSION"
+    return f.read_text(encoding="utf-8").strip() if f.is_file() else ""
 
 
 def add_ui_version_meta(html: str, version: str) -> str:
@@ -138,6 +148,21 @@ def main() -> None:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(f, target)
 
+    # Хеш в имени файла меняется с каждой сборкой производителя. Копирование само по себе
+    # старые файлы не убирает, и в webview/ оставались модули прошлой версии: программа
+    # работала, но в релиз уезжали лишние мегабайты чужого кода двух версий сразу.
+    removed = 0
+    for folder in ("assets", "devices"):
+        src, dst = SRC / folder, DST / folder
+        if not dst.is_dir():
+            continue
+        keep = {f.relative_to(src).as_posix() for f in src.rglob("*") if f.is_file()} if src.is_dir() else set()
+        for f in list(dst.rglob("*")):
+            if f.is_file() and f.relative_to(dst).as_posix() not in keep:
+                f.unlink()
+                removed += 1
+    pruned = f", убрано старых: {removed}" if removed else ""
+
     # Редактор однажды приписал шиму BOM. Браузеру он безразличен, а вот проверке файла
     # и диффам мешает — убираем, если он снова появится.
     shim = DST / "webhid-shim.js"
@@ -164,13 +189,24 @@ def main() -> None:
     version = ui_version(SRC / "assets")
     html = add_ui_version_meta(html, version)
 
+    # Релизы подписаны номером интерфейса производителя, поэтому дамп и VERSION должны
+    # совпадать. Наши правки поверх той же базы добавляют пятую часть (0.8.5.1.2), и это
+    # единственное разрешённое отличие. Расхождение — ошибка: иначе человек скачает сборку
+    # под номером, которого у производителя нет.
+    release = release_version()
+    if version and release and release != version and not release.startswith(version + "."):
+        raise SystemExit(
+            f"номер релиза не совпадает с дампом: в VERSION «{release}», интерфейс в vendor/io-web — «{version}».\n"
+            f"обнови VERSION на «{version}» (свои правки поверх базы — «{version}.2»), либо перекачай дамп"
+        )
+
     (DST / "index.html").write_text(html + "\n", encoding="utf-8")
     patched = patch_brand_links(DST / "assets")
     logo = patch_brand_logo(DST / "assets")
     count = len([p for p in (DST / "assets").rglob("*") if p.is_file()])
     sign = "iohub-desktop" if titled else "как в дампе"
     help = "help.html" if (DST / "help.html").is_file() else "НЕТ"
-    print(f"webview собран: index.html (шим внедрён), assets: {count}, "
+    print(f"webview собран: index.html (шим внедрён), assets: {count}{pruned}, "
           f"ссылки бренда: {patched}, знак бренда: {logo}, версия интерфейса: {version or 'НЕ НАЙДЕНА'}, "
           f"вывеска окна: {sign}, зонд: probe.html, справка: {help}")
 
