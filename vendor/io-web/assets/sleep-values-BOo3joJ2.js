@@ -1,0 +1,1 @@
+function e(e,t){let n=[0];for(let t=e.min;t<=e.max;t+=e.step)n.push(t);let r=t!==null&&!n.includes(t)?t:null;return r!==null&&n.push(r),n.sort((e,t)=>e-t).map(e=>({value:e,currentOnly:e===r}))}export{e as t};

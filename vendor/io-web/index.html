@@ -1,19 +1,24 @@
-﻿<!DOCTYPE html>
-<!-- saved from url=(0024)https://web.io.vision/#/ -->
-<html lang="en" data-theme="dark" data-motion="on" data-material="glass" style="--wp-city-opacity-scale: 1;"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>IO Hub</title>
-  <script data-wp-initial-theme="">
+  <script data-wp-initial-theme>
 (() => {
   let choice;
   try { choice = localStorage.getItem('wp.theme'); } catch {}
+  if (choice === 'pink' && false) {
+    document.documentElement.dataset.theme = 'pink';
+    return;
+  }
+  if (choice !== 'light' && choice !== 'dark' && choice !== 'auto') choice = "auto";
   document.documentElement.dataset.theme = true &&
     (choice === 'light' || (choice !== 'dark' && choice !== 'light' && matchMedia('(prefers-color-scheme: light)').matches))
     ? 'light' : 'dark';
 })();
 </script>
-<style data-wp-initial-theme="">
+<style data-wp-initial-theme>
 @layer brand, device;
 @layer brand {
   :root {
@@ -75,6 +80,9 @@
 
 html { background: var(--bg); color: var(--fg); }
 </style>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" type="image/x-icon">
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
     <meta name="description" content="IO Hub — веб-приложение для настройки клавиатур и мышей: клавиши, чувствительность, подсветка, макросы и профили.">
     <meta name="theme-color" content="#25282A">
     <meta name="application-name" content="IO Hub">
@@ -95,12 +103,13 @@ html { background: var(--bg); color: var(--fg); }
     <meta name="twitter:description" content="IO Hub — веб-приложение для настройки клавиатур и мышей: клавиши, чувствительность, подсветка, макросы и профили.">
     <meta name="twitter:image" content="https://web.io.vision/social-preview.png">
     <meta name="twitter:image:alt" content="IO Hub">
-    <script type="module" crossorigin="" src="./IO Hub_files/index-D17H6_-L.js.download"></script>
-    <link rel="stylesheet" crossorigin="" href="/assets/index---YMtrYL.css">
+    <link rel="manifest" href="/site.webmanifest">
+    
+    <link rel="modulepreload" crossorigin href="/assets/src-BI2UunrN.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-m-pJULZg.css">
   </head>
   <body>
 <div id="app"></div>
-<script type="module" crossorigin src="/assets/index-D17H6_-L.js"></script>
+<script type="module" crossorigin src="/assets/index-B6OltdZY.js"></script>
 </body>
 </html>
-
