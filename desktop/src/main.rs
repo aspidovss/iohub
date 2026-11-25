@@ -19,6 +19,15 @@ use tauri::{AppHandle, Manager, State};
 
 use hid::{DeviceInfo, HidWorker, WorkerStatus};
 
+/// Номер программы. Полное число (например 0.8.5.1) приходит из файла VERSION в корне
+/// репозитория и совпадает с версией интерфейса производителя: релизы привязаны к его
+/// нумерации. Cargo и Tauri понимают только три части, поэтому их собственная версия
+/// (0.8.5) остаётся запасным значением — она видна, только если файла VERSION нет.
+const APP_VERSION: &str = match option_env!("IOHUB_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 // ---------------------------------------------------------------- small file logger
 
 #[derive(Default)]
@@ -164,7 +173,7 @@ fn app_info(app: AppHandle, state: State<SharedState>) -> AppInfo {
         .unwrap_or_default();
     AppInfo {
         name: "iohub-desktop",
-        version: env!("CARGO_PKG_VERSION"),
+        version: APP_VERSION,
         platform: std::env::consts::OS,
         data_dir: dir,
         native_hid: state.worker.lock().map(|w| w.is_some()).unwrap_or(false),
@@ -364,7 +373,7 @@ fn support_info(app: AppHandle) -> SupportInfo {
         issues: format!("{PROJECT_URL}/issues/new?labels=bug"),
         log_path: dir.join("iohub-desktop.log").display().to_string(),
         // Номер программы и папка данных — то, что человек ищет в первой же справке.
-        version: env!("CARGO_PKG_VERSION"),
+        version: APP_VERSION,
         data_path: dir.display().to_string(),
     }
 }
@@ -465,7 +474,7 @@ fn report_bundle(
     let mut parts: Vec<String> = Vec::new();
     parts.push(format!(
         "iohub-desktop {} · {} · {}",
-        env!("CARGO_PKG_VERSION"),
+        APP_VERSION,
         std::env::consts::OS,
         std::env::consts::ARCH
     ));
@@ -625,7 +634,7 @@ fn main() {
                 l.path = Some(dir.join("iohub-desktop.log"));
                 l.write_line(&format!(
                     "=== run {} {}",
-                    env!("CARGO_PKG_VERSION"),
+                    APP_VERSION,
                     std::env::consts::OS
                 ));
             }
