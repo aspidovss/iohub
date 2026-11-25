@@ -50,15 +50,33 @@ def section(text: str, ver: str) -> str:
     return "\n".join(lines[start:]).strip() if start is not None else ""
 
 
+def interface_version() -> str:
+    """Версия интерфейса прямо из дампа vendor/io-web — тот же источник, что у сборки.
+
+    Считать её из номера релиза надёжно только пока у производителя четыре части; если
+    производитель вернётся к трём, наши правки (0.9.0.2) выдали бы неверную базу.
+    """
+    sys.path.insert(0, str(ROOT / "desktop"))
+    try:
+        import prepare_webview as pw
+
+        return pw.ui_version(pw.SRC / "assets")
+    except Exception:
+        return ""
+
+
 def main() -> int:
     tag = sys.argv[1] if len(sys.argv) > 1 else ""
     ver = version(tag)
     body = section(CHANGELOG.read_text(encoding="utf-8"), ver) if CHANGELOG.is_file() else ""
     # Наши правки поверх той же базы добавляют пятую часть (0.8.5.1.2) — база при этом 0.8.5.1.
     parts = ver.split(".")
-    ui = ".".join(parts[:4]) if len(parts) > 4 else ver
+    ui = interface_version() or (".".join(parts[:4]) if len(parts) > 4 else ver)
 
-    out = [f"Основано на интерфейсе {ui}.", ""]
+    head = f"Основано на интерфейсе {ui}."
+    if ver != ui:
+        head += f" Номер {ver} — наши правки поверх той же базы, интерфейс тот же."
+    out = [head, ""]
     out += [f"* {c}" for c in CREDITS]
     out += ["", BASE + " — не наш код, он распространяется своим правом; наша часть — "
             "офлайн-оболочка, мост WebHID и скрипты сборки.", ""]
