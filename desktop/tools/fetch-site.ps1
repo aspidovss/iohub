@@ -39,9 +39,17 @@
 .PARAMETER OutDir
   Куда складывать дамп. По умолчанию «<Root>/vendor/io-web».
 
+.PARAMETER FromServer
+  Взять index.html прямо с сервера: сохранённая браузером страница тогда не нужна.
+  Так удобнее обновляться на новый релиз производителя — не надо открывать Ctrl+S.
+
 .EXAMPLE
   .\desktop\tools\fetch-site.ps1
   Сохранить дамп в vendor/io-web тем, что лежит рядом с репозиторием.
+
+.EXAMPLE
+  .\desktop\tools\fetch-site.ps1 -FromServer -OutDir .\.fetch\app
+  Скачать свежую сборку с сервера в отдельную папку и сравнить с тем, что у нас.
 
 .EXAMPLE
   .\desktop\tools\fetch-site.ps1 -OutDir .\.fetch\app
@@ -53,7 +61,8 @@ param(
   [string]$Root = '',
   [string]$SavedHtml = '',
   [string]$SavedDir = '',
-  [string]$OutDir = ''
+  [string]$OutDir = '',
+  [switch]$FromServer
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,10 +75,29 @@ if (-not $SavedHtml) { $SavedHtml = Join-Path $Root 'IO Hub.html' }
 if (-not $SavedDir) { $SavedDir = Join-Path $Root 'IO Hub_files' }
 if (-not $OutDir) { $OutDir = Join-Path $Root 'vendor\io-web' }
 
-foreach ($p in @($SavedHtml, $SavedDir)) {
-  if (-not (Test-Path -LiteralPath $p)) {
-    throw "Нет «$p». Откройте $Base в браузере, сохраните страницу целиком (Ctrl+S) и повторите."
+# Путь, переданный в параметрах, может быть относительным. Cmdlet'ы понимают его относительно
+# текущей папки PowerShell, а .NET-вызовы (Запись файла, проверка границы папки вывода) —
+# относительно папки процесса, и это разные папки. Разворачиваем всё в абсолютные сразу.
+foreach ($name in @('SavedHtml', 'SavedDir', 'OutDir')) {
+  $v = (Get-Variable -Name $name).Value
+  if ($v -and -not [System.IO.Path]::IsPathRooted($v)) {
+    Set-Variable -Name $name -Value ([System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $v)))
   }
+}
+
+if (-not $FromServer) {
+  foreach ($p in @($SavedHtml, $SavedDir)) {
+    if (-not (Test-Path -LiteralPath $p)) {
+      throw "Нет «$p». Откройте $Base в браузере, сохраните страницу целиком (Ctrl+S) и повторите, " +
+            'или запустите скрипт с -FromServer.'
+    }
+  }
+} else {
+  # Свежая сборка доступна прямо с сервера: index.html там отдаётся как есть, и сохранение
+  # браузером нужно только чтобы убедиться, что браузер видит ровно ту же страницу.
+  $SavedHtml = Join-Path $env:TEMP 'iohub-index-live.html'
+  Invoke-WebRequest -Uri "$Base/" -OutFile $SavedHtml -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+  Write-Host "Страница взята с $Base/ (без сохранения браузером)."
 }
 
 New-Item -ItemType Directory -Force -Path "$OutDir\assets" | Out-Null
@@ -101,11 +129,18 @@ if (-not $cssName -or -not $jsName) {
   throw "В сохранённой странице не найдены главный модуль или стили: js=«$jsName» css=«$cssName»."
 }
 
-$cssSrc = Find-Saved $cssName
-$jsSrc = Find-Saved $jsName
-foreach ($pair in @(@($jsSrc, $jsName), @($cssSrc, $cssName))) {
-  if (-not $pair[0]) { throw "В папке сохранения нет файла «$($pair[1])»." }
-  Copy-Item -LiteralPath $pair[0] -Destination "$OutDir\assets\$($pair[1])" -Force
+if ($FromServer) {
+  # Сохранения браузером нет, поэтому главный модуль и стили поедут в общую очередь
+  # и скачаются с сервера наравне с остальными файлами.
+  $mainAssets = @("assets/$jsName", "assets/$cssName")
+} else {
+  $cssSrc = Find-Saved $cssName
+  $jsSrc = Find-Saved $jsName
+  foreach ($pair in @(@($jsSrc, $jsName), @($cssSrc, $cssName))) {
+    if (-not $pair[0]) { throw "В папке сохранения нет файла «$($pair[1])»." }
+    Copy-Item -LiteralPath $pair[0] -Destination "$OutDir\assets\$($pair[1])" -Force
+  }
+  $mainAssets = @()
 }
 Write-Host "Главный модуль: $jsName ; стили: $cssName"
 
@@ -122,8 +157,13 @@ if ($head -match $savedPattern) {
 $head = [regex]::Replace($head, '<link[^>]*href="https?://[^"]*"[^>]*>\s*', '')
 $head = [regex]::Replace($head, '<script[^>]*src="https?://[^"]*"[^>]*>\s*</script>', '')
 # Сохранённая страница ссылается на главный модуль как на файл .download — такой ссылки в
-# программе быть не должно, настоящий тег подключения пишется ниже.
+# программе быть не должно, настоящий тег подключения пишется ниже. При скачивании с сервера
+# модуль назван правильно, но он уже подключён в шапке: убираем и его, чтобы не подключался
+# дважды (тело страницы ниже пишет единственное подключение).
 $head = [regex]::Replace($head, '<script[^>]*\.download[^>]*>\s*</script>', '')
+if ($FromServer) {
+  $head = [regex]::Replace($head, '<script[^>]*type="module"[^>]*>\s*</script>', '')
+}
 $html = $head + "<body>`n" +
   '<div id="app"></div>' + "`n" +
   "<script type=`"module`" crossorigin src=`"/assets/$jsName`"></script>`n" +
@@ -173,14 +213,23 @@ function Get-Asset([string]$rel) {
   }
 }
 
+# Главный модуль и стили: при сохранении браузером они уже лежат в дампе, при скачивании
+# с сервера их нужно достать первыми — из них читается остальной список файлов.
+foreach ($e in $mainAssets) {
+  if ($seen.Add($e)) {
+    $st = Get-Asset $e
+    if ($st -eq 'notfound' -or $st -eq 'outside') { throw "С $Base нет файла «$e» — страница и файлы с сервера разные?" }
+    if ($st -ne 'ok') { throw "Файл «$e» не скачался ($st): проверьте сеть и запустите скрипт снова." }
+  }
+}
+
+# Список файлов читаем из главного модуля и стилей: он и есть источник всех остальных ссылок.
 Add-Refs (Get-Content -LiteralPath "$OutDir\assets\$jsName" -Raw -Encoding UTF8)
 Add-Refs (Get-Content -LiteralPath "$OutDir\assets\$cssName" -Raw -Encoding UTF8)
 
-# Эти модули появляются только когда пользователь открывает соответствующий экран,
-# поэтому в сохранённой странице их нет. Список пополняется по мере изучения интерфейса.
-foreach ($e in @('assets/driver-ObUgXM8z.js', 'assets/emitter-WqgolIYy.js',
-                 'assets/report-DsRvFWy_.js', 'assets/ui-CqflakEm.js', 'assets/ui-kPywwZvx.css')) {
-  if ($seen.Add($e)) { $queue.Enqueue($e) }
+# Пути, названные прямо в шапке страницы (modulepreload, дополнительные стили).
+foreach ($r in [regex]::Matches($head, '(?:\.\./|/)*((?:assets|devices)/[A-Za-z0-9_.\-/]+\.(?:js|css))')) {
+  if ($seen.Add($r.Groups[1].Value)) { $queue.Enqueue($r.Groups[1].Value) }
 }
 
 $ok = 0
