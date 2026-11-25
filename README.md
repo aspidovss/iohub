@@ -107,6 +107,14 @@ sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hi
 компьютером; в системе без systemd-logind можно заменить его на `MODE="0666"` — это
 откроет устройства всем, поэтому только как крайний вариант.
 
+Две шероховатости, о которых лучше знать заранее. В менеджере пакетов версия показывается
+как `0.8.5`, даже если файл называется `iohub-desktop_0.8.5.1.2_amd64.deb`: Tauri умеет
+класть в метаданные только три части номера. Полная версия — в имени файла, в заголовке
+окна, внизу настроек и в справке. И AppImage не запускается на Ubuntu 24.04 «из коробки»:
+там нет `libfuse2`, нужной для монтирования образа (`sudo apt install libfuse2`) — либо
+распаковать его: `./iohub-desktop-<версия>.AppImage --appimage-extract` и запускать
+`AppRun` из папки.
+
 Собрать самому: `cargo tauri build --bundles deb,appimage` из папки `desktop`.
 Библиотечку hidapi crate собирает сам, но нужны `libudev-dev` и `pkg-config` — полный
 список пакетов в `.github/workflows/release.yml`.
