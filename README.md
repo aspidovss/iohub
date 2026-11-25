@@ -73,20 +73,43 @@ USB-клавиатура
 
 ## Linux
 
-Собирается и запускается на WebKitGTK, но на реальном железе пока не проверялось —
-эту ветку стоит считать экспериментальной:
+В [Releases](../../releases) лежат `iohub-desktop_<версия>_amd64.deb` и
+`iohub-desktop-<версия>.AppImage` (сборка на Ubuntu 22.04, 64-bit). Запускается на
+WebKitGTK. На реальном железе Linux-версию пока не проверяли, поэтому она и помечена
+в релизе как экспериментальная: если что-то не работает — напишите на почту или в задачи,
+это ценно.
+
+**deb-пакет** — рекомендуемый путь: он сам ставит правило udev, без которого обычная
+учётная запись не может открыть `/dev/hidraw*` и настройка клавиш не работает:
 
 ```bash
-cargo tauri build --bundles deb,appimage
+sudo apt install ./iohub-desktop_<версия>_amd64.deb
 ```
 
-Библиотечку hidapi crate собирает сам (фича `linux-static-hidraw` по умолчанию), но
-для этого нужны `libudev-dev` и `pkg-config` — полный список пакетов в
-`.github/workflows/release.yml`. Для доступа к `/dev/hidraw*` нужны права — правило udev:
+Правило ложится в `/etc/udev/rules.d/99-iohub-desktop.rules`, перечитывается при
+установке; после этого клавиатуру достаточно перотключить.
 
+**AppImage** правило поставить сам не может — файл с правилом лежит рядом с остальными
+файлами релиза (`99-iohub-desktop.rules`):
+
+```bash
+chmod +x iohub-desktop-<версия>.AppImage && ./iohub-desktop-<версия>.AppImage
 ```
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="05ac", MODE="0660", GROUP="input"
+
+```bash
+sudo cp 99-iohub-desktop.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=hidraw
 ```
+
+Если и после этого клавиатура не открывается, помогут права напрямую на время проверки:
+`sudo setfacl -m u:$USER:rw /dev/hidraw*` (до следующего переподключения). Правило из
+файла использует `TAG+="uaccess"`, то есть выдаёт доступ тому, кто сейчас сидит за
+компьютером; в системе без systemd-logind можно заменить его на `MODE="0666"` — это
+откроет устройства всем, поэтому только как крайний вариант.
+
+Собрать самому: `cargo tauri build --bundles deb,appimage` из папки `desktop`.
+Библиотечку hidapi crate собирает сам, но нужны `libudev-dev` и `pkg-config` — полный
+список пакетов в `.github/workflows/release.yml`.
 
 ## Файлы настроек
 
