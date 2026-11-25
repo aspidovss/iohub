@@ -1,0 +1,12 @@
+#!/bin/sh
+# Ставится внутрь deb-пакета как postinst. Перечитывает правила udev, чтобы
+# клавиатуру можно было настроить сразу после установки, без перезагрузки.
+# Ошибка тут не должна ломать установку: файл правила уже на диске и подействует
+# при следующем подключении устройства.
+
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=hidraw || true
+fi
+
+exit 0

@@ -36,6 +36,15 @@
         "languages": ["Russian"]
       }
     },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libudev1"],
+        "files": {
+          "/etc/udev/rules.d/99-iohub-desktop.rules": "linux/udev/99-iohub-desktop.rules"
+        },
+        "postInstallScript": "linux/udev/postinst"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

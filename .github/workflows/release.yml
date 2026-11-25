@@ -103,6 +103,9 @@ jobs:
           fi
           for f in desktop/target/release/bundle/deb/*.deb; do [ -e "$f" ] && cp "$f" "artifacts/iohub-desktop_${ver}_amd64.deb"; done
           for f in desktop/target/release/bundle/appimage/*.AppImage; do [ -e "$f" ] && cp "$f" "artifacts/iohub-desktop-${ver}.AppImage"; done
+          # Правило udev едет отдельным файлом: в AppImage его положить некуда,
+          # и человеку на AppImage придётся ставить правило самому.
+          cp desktop/linux/udev/99-iohub-desktop.rules artifacts/99-iohub-desktop.rules
           ls -la artifacts
 
       - uses: actions/upload-artifact@v4
