@@ -38,7 +38,7 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libudev1"],
+        "depends": ["libudev1"],
         "files": {
           "/etc/udev/rules.d/99-iohub-desktop.rules": "linux/udev/99-iohub-desktop.rules"
         },
